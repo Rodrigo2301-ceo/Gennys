@@ -3,25 +3,106 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Fundo azul royal (nunca preto puro / cinza genérico) */
+  --bg-900: #0a1128;
+  --bg-800: #001845;
+  --bg-700: #0f1e3d;
+
+  /* Acentos */
+  --accent: #2563eb;
+  --accent-strong: #1e40af;
+
+  /* Brilhos */
+  --glow-cyan: #67e8f9;
+  --glow-blue: #93c5fd;
+
+  /* Cores por módulo */
+  --mod-financa: #f59e0b;
+  --mod-produtividade: #14b8a6;
+  --mod-estudo: #22d3ee;
+  --mod-biblia: #93c5fd;
+
+  /* Cores de dado (papéis novos): entrada/saída no fluxo de caixa */
+  --data-in: #a5b4fc; /* lavanda — "ganhei" */
+  --data-out: #fb7185; /* coral — "gastei" */
+
+  --foreground: #e8eefc;
+  --muted: #8ea3cc;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
 }
 
 body {
   color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  background:
+    radial-gradient(1200px 700px at 50% -10%, var(--bg-700) 0%, transparent 60%),
+    radial-gradient(900px 900px at 90% 110%, var(--bg-800) 0%, transparent 55%),
+    var(--bg-900);
+  background-attachment: fixed;
+  /* Mono é o workhorse do UI (dados, labels, corpo utilitário) */
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
+  /* Esconde barra de rolagem preservando o scroll */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Fonte de título (Space Grotesk) */
+  .font-display {
+    font-family: var(--font-display), var(--font-geist-sans), sans-serif;
+  }
+
+  /* Eyebrow: mono, caixa alta, tracking largo, cor accent */
+  .eyebrow {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  /* Glow sutil (não neon): usa a cor do próprio elemento via --glow */
+  .glow-accent {
+    box-shadow: 0 0 24px -6px var(--accent);
+  }
+
+  /* Textura de grid MUITO sutil (fundo da tela de Estudos) */
+  .bg-grid {
+    background-image:
+      linear-gradient(rgba(147, 197, 253, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(147, 197, 253, 0.05) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+}
+
+/* Inputs herdam a fonte e não estouram no mobile */
+input,
+textarea,
+button {
+  font-family: inherit;
+}
+
+/* Foco acessível com o acento do projeto */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

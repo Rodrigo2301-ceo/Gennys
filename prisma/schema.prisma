@@ -1,0 +1,145 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  name          String
+  birthDate     DateTime?
+  plan          String    @default("free")
+  createdAt     DateTime  @default(now())
+
+  entries    Entry[]
+  memories   Memory[]
+  verseMarks VerseMark[]
+  iaUsos     IaUsage[]
+}
+
+// Contagem de interações com a IA por usuário/dia. Só MEDE (prepara o limite
+// do plano grátis; não bloqueia ninguém nesta fase). Cascade = LGPD.
+model IaUsage {
+  id        String   @id @default(cuid())
+  userId    String
+  dia       String // "YYYY-MM-DD" no fuso America/Sao_Paulo
+  chamadas  Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dia])
+  @@index([userId])
+}
+
+model Entry {
+  id         String   @id @default(cuid())
+  userId     String
+  tipo       String   // "financa" | "tarefa" | "nota" | "habito" | "estudo"
+  dados      Json
+  valor      Decimal?
+  categoria  String?
+  locked     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  // Recorrência de despesa fixa: quando uma finança travada gera a cópia
+  // do mês seguinte, a cópia aponta para o registro original (template).
+  origemRecorrenteId String?
+  mesReferencia      String? // "YYYY-MM" — mês que esta cópia representa
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  origem  Entry?  @relation("Recorrencia", fields: [origemRecorrenteId], references: [id], onDelete: SetNull)
+  geradas Entry[] @relation("Recorrencia")
+
+  @@index([userId, tipo])
+  @@index([userId, createdAt])
+  @@index([origemRecorrenteId])
+}
+
+model Memory {
+  id        String   @id @default(cuid())
+  userId    String
+  fato      String
+  categoria String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Bíblia (Fase 4)
+// Conteúdo compartilhado em DOMÍNIO PÚBLICO. Estruturado para múltiplas
+// traduções (seletor de versão), mesmo começando só com a Almeida 1911.
+// ---------------------------------------------------------------------------
+
+model BibleTranslation {
+  id        String   @id @default(cuid())
+  code      String   @unique // ex.: "ALM1911"
+  name      String // ex.: "Almeida 1911"
+  year      Int?
+  license   String // ex.: "public-domain"
+  createdAt DateTime @default(now())
+
+  books BibleBook[]
+}
+
+model BibleBook {
+  id            String @id @default(cuid())
+  translationId String
+  code          String // ex.: "GEN"
+  name          String // ex.: "Gênesis"
+  abbrev        String // ex.: "Gn"
+  position      Int // ordem canônica 1..66
+  testamento    String // "AT" | "NT"
+
+  translation BibleTranslation @relation(fields: [translationId], references: [id], onDelete: Cascade)
+  verses      BibleVerse[]
+
+  @@unique([translationId, code])
+  @@index([translationId, position])
+}
+
+model BibleVerse {
+  id      String @id @default(cuid())
+  bookId  String
+  chapter Int
+  number  Int
+  text    String
+
+  book BibleBook @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([bookId, chapter, number])
+  @@index([bookId, chapter])
+}
+
+// Marcação de versículo pelo usuário: highlight + observação pessoal.
+// DADO SENSÍVEL (LGPD — convicção religiosa). Mesma proteção das outras
+// tabelas de usuário: onDelete Cascade garante exclusão total ao apagar a conta.
+// A referência ao versículo é por snapshot (código/livro/cap/versículo + texto),
+// desacoplada do conteúdo — reimportar a Bíblia nunca apaga marcações do usuário.
+model VerseMark {
+  id              String   @id @default(cuid())
+  userId          String
+  translationCode String // ex.: "ALM1911"
+  bookCode        String // ex.: "JHN"
+  bookName        String // ex.: "João"
+  chapter         Int
+  verse           Int
+  texto           String // snapshot do versículo marcado
+  cor             String   @default("#93c5fd")
+  observacao      String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, translationCode, bookCode, chapter, verse])
+  @@index([userId, createdAt])
+}
