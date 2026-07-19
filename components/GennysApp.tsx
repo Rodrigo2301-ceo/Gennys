@@ -5,6 +5,8 @@ import dynamic from "next/dynamic";
 import { signOut } from "next-auth/react";
 import ChatInput, { type ImagemSelecionada } from "@/components/ChatInput";
 import PainelLateral from "@/components/painel/PainelLateral";
+import SeletorModelo from "@/components/SeletorModelo";
+import type { AiProvider } from "@/lib/ai/providers";
 
 // Carrega o átomo só no cliente (three/postprocessing usam window/document).
 const Atom3D = dynamic(() => import("@/components/atom/Atom3D"), {
@@ -34,7 +36,13 @@ function horaAgora(): string {
   }).format(new Date());
 }
 
-export default function GennysApp({ nome }: { nome: string }) {
+export default function GennysApp({
+  nome,
+  aiProvider,
+}: {
+  nome: string;
+  aiProvider: AiProvider;
+}) {
   const [estado, setEstado] = useState<AtomEstado>("idle");
   const [corModulo, setCorModulo] = useState<string>(COR_NUCLEO);
   const [feed, setFeed] = useState<Mensagem[]>([]);
@@ -144,9 +152,7 @@ export default function GennysApp({ nome }: { nome: string }) {
             <path d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <span className="font-display text-lg font-bold tracking-tight text-glow-cyan">
-          Gennys
-        </span>
+        <SeletorModelo provedorInicial={aiProvider} />
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}
           className="text-sm text-muted transition hover:text-foreground"

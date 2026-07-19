@@ -2,9 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/app/generated/prisma/client";
 import { corDoModulo } from "@/lib/modules";
 import { construirSystemPrompt } from "./prompts";
-import { categorizar } from "./anthropic";
+import { categorizarComProvedor } from "./aiProvider";
 import { carregarMemorias, salvarMemorias } from "./memory";
 import { registrarInteracaoIA } from "@/lib/ai/usage";
+import { obterProvedorIA } from "@/lib/ai/preference";
 import type { EntradaMotor, ResultadoMotor } from "./types";
 
 const LIMIAR_CONFIANCA = 0.7;
@@ -25,8 +26,14 @@ export async function processarEntrada(
     const memorias = await carregarMemorias(userId);
     const systemPrompt = construirSystemPrompt(memorias);
 
-    // 2. IA classifica + extrai memórias.
-    const cat = await categorizar({ systemPrompt, historico, texto, imagem });
+    // 2. IA classifica + extrai memórias (com o provedor escolhido pelo usuário).
+    const provedor = await obterProvedorIA(userId);
+    const cat = await categorizarComProvedor(provedor, {
+      systemPrompt,
+      historico,
+      texto,
+      imagem,
+    });
 
     // Mede o uso de IA por usuário/dia (só conta, não bloqueia).
     await registrarInteracaoIA(userId);

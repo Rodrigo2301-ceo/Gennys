@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Categorizacao, ImagemEntrada, TurnoHistorico } from "./types";
+import { extrairJSON, normalizarCategorizacao } from "./parseCategorizacao";
 
 // Modelo definido no CLAUDE.md. Key sempre no servidor (ANTHROPIC_API_KEY).
 const MODELO = "claude-sonnet-4-6";
@@ -14,68 +15,6 @@ function getCliente(): Anthropic {
     cliente = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   }
   return cliente;
-}
-
-const TIPOS_VALIDOS = ["financa", "tarefa", "nota", "habito", "estudo"];
-
-function extrairJSON(texto: string): unknown {
-  const limpo = texto.replace(/```json/gi, "").replace(/```/g, "").trim();
-  const inicio = limpo.indexOf("{");
-  const fim = limpo.lastIndexOf("}");
-  if (inicio === -1 || fim === -1 || fim < inicio) {
-    throw new Error("Resposta da IA sem JSON reconhecível.");
-  }
-  return JSON.parse(limpo.slice(inicio, fim + 1));
-}
-
-function normalizar(bruto: unknown): Categorizacao {
-  const o = (bruto ?? {}) as Record<string, unknown>;
-
-  const tipo = TIPOS_VALIDOS.includes(o.tipo as string)
-    ? (o.tipo as Categorizacao["tipo"])
-    : "nota";
-
-  const confiancaNum = Number(o.confianca);
-  const confianca = Number.isFinite(confiancaNum)
-    ? Math.min(1, Math.max(0, confiancaNum))
-    : 0;
-
-  const valorNum = Number(o.valor);
-  const valor =
-    o.valor === null || o.valor === undefined || !Number.isFinite(valorNum)
-      ? null
-      : valorNum;
-
-  const memoriasBruto = Array.isArray(o.memorias) ? o.memorias : [];
-  const memorias = memoriasBruto
-    .map((m) => {
-      const mm = (m ?? {}) as Record<string, unknown>;
-      return {
-        fato: typeof mm.fato === "string" ? mm.fato.trim() : "",
-        categoria: typeof mm.categoria === "string" ? mm.categoria : null,
-      };
-    })
-    .filter((m) => m.fato.length > 0);
-
-  return {
-    tipo,
-    confianca,
-    categoria: typeof o.categoria === "string" ? o.categoria : null,
-    valor,
-    dados:
-      o.dados && typeof o.dados === "object"
-        ? (o.dados as Record<string, unknown>)
-        : {},
-    resposta:
-      typeof o.resposta === "string" && o.resposta.trim()
-        ? o.resposta.trim()
-        : "Certo!",
-    pergunta:
-      typeof o.pergunta === "string" && o.pergunta.trim()
-        ? o.pergunta.trim()
-        : null,
-    memorias,
-  };
 }
 
 export async function categorizar(params: {
@@ -129,5 +68,23 @@ export async function categorizar(params: {
     .map((b) => b.text)
     .join("");
 
-  return normalizar(extrairJSON(textoResposta));
+  return normalizarCategorizacao(extrairJSON(textoResposta));
+}
+
+export async function responderTexto(params: {
+  systemPrompt: string;
+  pergunta: string;
+}): Promise<string> {
+  const resposta = await getCliente().messages.create({
+    model: MODELO,
+    max_tokens: 300,
+    system: params.systemPrompt,
+    messages: [{ role: "user", content: params.pergunta }],
+  });
+
+  return resposta.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("")
+    .trim();
 }

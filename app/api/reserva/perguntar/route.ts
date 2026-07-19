@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { calcularMediaFinanceira } from "@/lib/finance/reserva";
 import { responderPerguntaReserva } from "@/lib/finance/assistente";
 import { registrarInteracaoIA } from "@/lib/ai/usage";
+import { obterProvedorIA } from "@/lib/ai/preference";
 
 // Q&A livre dentro do plano de reserva (ex.: "onde invisto?").
 // Mantém a mesma regra anti-investimento do motor principal.
@@ -29,7 +30,8 @@ export async function POST(req: Request) {
 
   try {
     const media = await calcularMediaFinanceira(session.user.id);
-    const resposta = await responderPerguntaReserva(pergunta.trim(), media);
+    const provedor = await obterProvedorIA(session.user.id);
+    const resposta = await responderPerguntaReserva(pergunta.trim(), media, provedor);
     await registrarInteracaoIA(session.user.id);
     return NextResponse.json({ resposta });
   } catch (err) {

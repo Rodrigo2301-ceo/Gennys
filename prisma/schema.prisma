@@ -14,6 +14,7 @@ model User {
   name          String
   birthDate     DateTime?
   plan          String    @default("free")
+  aiProvider    String    @default("gemini") // "gemini" | "grok" | "anthropic"
   createdAt     DateTime  @default(now())
 
   entries    Entry[]
