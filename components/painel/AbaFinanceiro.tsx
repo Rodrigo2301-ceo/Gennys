@@ -42,7 +42,7 @@ export default function AbaFinanceiro({
       </div>
 
       <div id="bloco-plano">
-        <PlanoReserva />
+        <PlanoReserva onRegistrar={onRegistrar} />
       </div>
 
       <FluxoCaixa />

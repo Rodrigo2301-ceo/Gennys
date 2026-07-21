@@ -69,10 +69,16 @@ export function sugerirValorMensal(media: MediaFinanceira): number {
   return Math.round((sobra * 0.2) / 10) * 10;
 }
 
-// Meta padrão de reserva de emergência: 6x a despesa média mensal.
+// Reserva de emergência = N meses das despesas do usuário. 6 é o padrão mais
+// aceito no Brasil (CLT); serve de racional explícito na tela.
+export const MESES_RESERVA_EMERGENCIA = 6;
+
+// Meta padrão de reserva de emergência: N x a despesa média mensal.
 export function sugerirMetaEmergencia(media: MediaFinanceira): number {
   if (media.despesaMedia <= 0) return 0;
-  return Math.round((media.despesaMedia * 6) / 50) * 50;
+  return (
+    Math.round((media.despesaMedia * MESES_RESERVA_EMERGENCIA) / 50) * 50
+  );
 }
 
 export function calcularPrazoMeses(
@@ -83,12 +89,33 @@ export function calcularPrazoMeses(
   return Math.ceil(metaValor / valorMensal);
 }
 
+// Meses inteiros (arredondado pra cima) entre hoje e uma data-alvo "YYYY-MM"
+// ou "YYYY-MM-DD". Retorna null se a data for inválida ou já passou.
+export function mesesAteData(dataAlvo: string): number | null {
+  const partes = dataAlvo.split("-").map(Number);
+  const [ano, mes] = partes;
+  if (!ano || !mes) return null;
+  const hoje = new Date();
+  const meses = (ano - hoje.getFullYear()) * 12 + (mes - 1 - hoje.getMonth());
+  return meses > 0 ? meses : null;
+}
+
+// Valor mensal derivado de uma meta com prazo: meta ÷ meses restantes.
+export function valorMensalPorPrazo(
+  metaValor: number,
+  mesesRestantes: number,
+): number {
+  if (!metaValor || mesesRestantes <= 0) return 0;
+  return Math.ceil(metaValor / mesesRestantes / 10) * 10;
+}
+
 export interface PlanoReservaDados {
   objetivo: string;
   metaValor: number | null;
   valorMensal: number;
   prazoMeses: number | null;
-  modo: "manual" | "sugestao";
+  dataAlvo: string | null; // "YYYY-MM" quando o modo é "prazo"
+  modo: "manual" | "sugestao" | "prazo";
 }
 
 export async function buscarPlanoAtual(userId: string) {

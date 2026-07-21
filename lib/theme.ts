@@ -20,6 +20,7 @@ export const cores = {
 
   // Texto
   foreground: "#e8eefc",
+  soft: "#c0c3d4", // apoio — mais contraste que muted (AA)
   muted: "#8ea3cc",
 
   // Superfícies / bordas translúcidas

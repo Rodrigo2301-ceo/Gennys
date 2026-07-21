@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { PROVEDOR_PADRAO } from "@/lib/ai/providers";
 
 export async function POST(req: Request) {
   let body: unknown;
@@ -68,6 +69,9 @@ export async function POST(req: Request) {
         email: emailLimpo,
         passwordHash,
         birthDate,
+        // Explícito: não depender do default do schema/client (que já ficou
+        // defasado como "anthropic" e quebrava a IA de contas novas).
+        aiProvider: PROVEDOR_PADRAO,
       },
     });
 

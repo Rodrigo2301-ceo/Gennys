@@ -15,34 +15,59 @@ import { Alvo } from "@/components/ui/icones";
 
 const AMBER = CORES_MODULO.financa; // #f59e0b
 
+type Modo = "sugestao" | "prazo" | "manual";
+
 interface PlanoDados {
   objetivo: string;
   metaValor: number | null;
   valorMensal: number;
   prazoMeses: number | null;
-  modo: "manual" | "sugestao";
+  dataAlvo: string | null;
+  modo: Modo;
 }
 
 interface DadosReserva {
   media: { receitaMedia: number; despesaMedia: number; mesesConsiderados: number };
   sugestaoValorMensal: number;
   sugestaoMetaEmergencia: number;
+  mesesReservaEmergencia: number;
   plano: { dados: PlanoDados } | null;
 }
 
-export default function PlanoReserva() {
+// "YYYY-MM" do mês seguinte, como valor mínimo padrão do seletor de data-alvo.
+function proximoMesISO(): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function mesesAteISO(dataAlvo: string): number | null {
+  const [ano, mes] = dataAlvo.split("-").map(Number);
+  if (!ano || !mes) return null;
+  const hoje = new Date();
+  const meses = (ano - hoje.getFullYear()) * 12 + (mes - 1 - hoje.getMonth());
+  return meses > 0 ? meses : null;
+}
+
+export default function PlanoReserva({
+  onRegistrar,
+}: {
+  onRegistrar?: () => void;
+}) {
   const [dados, setDados] = useState<DadosReserva | null>(null);
   const [editando, setEditando] = useState(false);
   const [objetivo, setObjetivo] = useState("");
   const [metaValor, setMetaValor] = useState("");
-  const [modo, setModo] = useState<"manual" | "sugestao">("sugestao");
+  const [modo, setModo] = useState<Modo>("sugestao");
   const [valorManual, setValorManual] = useState("");
+  const [dataAlvo, setDataAlvo] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   const [pergunta, setPergunta] = useState("");
   const [resposta, setResposta] = useState<string | null>(null);
   const [perguntando, setPerguntando] = useState(false);
+  const [erroPergunta, setErroPergunta] = useState(false);
 
   function carregar() {
     fetch("/api/reserva")
@@ -73,6 +98,7 @@ export default function PlanoReserva() {
           metaValor: metaValor ? Number(metaValor) : null,
           modo,
           valorManual: valorManual ? Number(valorManual) : undefined,
+          dataAlvo: dataAlvo || undefined,
         }),
       });
       if (!res.ok) {
@@ -88,20 +114,41 @@ export default function PlanoReserva() {
     }
   }
 
-  async function perguntar() {
-    if (!pergunta.trim()) return;
-    setPerguntando(true);
-    setResposta(null);
+  // 1 retry silencioso; se falhar de novo, fallback útil + botão "Tentar de novo".
+  async function chamarPergunta(texto: string, tentativa = 1): Promise<string> {
     try {
       const res = await fetch("/api/reserva/perguntar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pergunta }),
+        body: JSON.stringify({ pergunta: texto }),
       });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? `HTTP ${res.status}`);
+      }
       const data = await res.json();
-      setResposta(res.ok ? data.resposta : data.error);
+      return data.resposta as string;
+    } catch (e) {
+      console.error(`[reserva/perguntar] tentativa ${tentativa} falhou:`, e);
+      if (tentativa === 1) return chamarPergunta(texto, 2);
+      throw e;
+    }
+  }
+
+  async function perguntar() {
+    if (!pergunta.trim() || perguntando) return;
+    setPerguntando(true);
+    setResposta(null);
+    setErroPergunta(false);
+    try {
+      const r = await chamarPergunta(pergunta.trim());
+      setResposta(r);
     } catch {
-      setResposta("Falha de conexão.");
+      setErroPergunta(true);
+      setResposta(
+        "O Gennys tá com dificuldade de responder agora. Isso costuma ser " +
+          "passageiro — tenta de novo em instantes.",
+      );
     } finally {
       setPerguntando(false);
     }
@@ -110,6 +157,15 @@ export default function PlanoReserva() {
   if (!dados) return <p className="text-sm text-muted">Carregando…</p>;
 
   const plano = dados.plano?.dados;
+  const temRenda = dados.media.receitaMedia > 0;
+  const temSugestao = dados.sugestaoValorMensal > 0;
+  const temDespesa = dados.media.despesaMedia > 0;
+
+  // Preview do valor mensal no modo "prazo" (meta ÷ meses até a data).
+  const metaNum = metaValor ? Number(metaValor) : 0;
+  const mesesPrazo = dataAlvo ? mesesAteISO(dataAlvo) : null;
+  const mensalPrazo =
+    metaNum > 0 && mesesPrazo ? Math.ceil(metaNum / mesesPrazo / 10) * 10 : 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -129,7 +185,7 @@ export default function PlanoReserva() {
                 {plano.metaValor ? "meta" : "por mês"}
               </span>
             </div>
-            <p className="mt-1 truncate text-xs text-muted">{plano.objetivo}</p>
+            <p className="mt-1 truncate text-sm text-soft">{plano.objetivo}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {plano.metaValor ? (
                 <Chip>{formatarReais(plano.valorMensal)}/mês</Chip>
@@ -141,14 +197,14 @@ export default function PlanoReserva() {
           {/* Roteiro (timeline) */}
           <Card>
             <SecaoTitulo>Meu roteiro</SecaoTitulo>
-            <Roteiro plano={plano} />
+            <Roteiro plano={plano} media={dados.media} />
             <div className="mt-1 flex justify-end">
               <button
                 type="button"
                 onClick={() => setEditando(true)}
                 className="text-xs text-glow-blue hover:underline"
               >
-                Ajustar estratégia
+                Ajustar
               </button>
             </div>
           </Card>
@@ -156,70 +212,144 @@ export default function PlanoReserva() {
       ) : (
         <Card>
           <Eyebrow cor={AMBER}>Plano de reserva</Eyebrow>
-          <p className="mt-1 text-xs text-muted">
+          <p className="mt-1 text-sm text-soft">
             Média (últimos meses): receita{" "}
-            <span className="tabular-nums">
+            <span className="font-mono tabular-nums">
               {formatarReais(dados.media.receitaMedia)}
             </span>{" "}
             · despesa{" "}
-            <span className="tabular-nums">
+            <span className="font-mono tabular-nums">
               {formatarReais(dados.media.despesaMedia)}
             </span>
           </p>
 
           <div className="mt-3 flex flex-col gap-2.5">
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-muted">Objetivo (reserva ou meta)</span>
+              <span className="text-soft">Objetivo (reserva ou meta)</span>
               <input
                 value={objetivo}
                 onChange={(e) => setObjetivo(e.target.value)}
-                placeholder="Ex.: reserva de emergência, viagem, moto…"
-                className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 outline-none focus:border-royal-500"
+                placeholder="Ex.: reserva, viagem, moto"
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-royal-500"
               />
             </label>
 
-            <div className="flex gap-2 text-sm">
-              <button
-                type="button"
-                onClick={() => setModo("sugestao")}
-                className={`flex-1 rounded-lg border px-3 py-2 transition ${
-                  modo === "sugestao"
-                    ? "border-mod-financa bg-mod-financa/15 text-foreground"
-                    : "border-white/10 bg-white/5 text-muted"
-                }`}
-              >
-                Sugestão ({formatarReais(dados.sugestaoValorMensal)}/mês)
-              </button>
-              <button
-                type="button"
-                onClick={() => setModo("manual")}
-                className={`flex-1 rounded-lg border px-3 py-2 transition ${
-                  modo === "manual"
-                    ? "border-mod-financa bg-mod-financa/15 text-foreground"
-                    : "border-white/10 bg-white/5 text-muted"
-                }`}
-              >
-                Definir valor
-              </button>
+            {/* Como chegar lá: sugestão / por prazo / valor fixo */}
+            <div className="flex flex-col gap-1">
+              <span className="text-sm text-soft">Como chegar lá</span>
+              <div className="grid grid-cols-3 gap-1.5 text-sm">
+                <ModoBtn ativo={modo === "sugestao"} onClick={() => setModo("sugestao")}>
+                  Sugestão
+                </ModoBtn>
+                <ModoBtn ativo={modo === "prazo"} onClick={() => setModo("prazo")}>
+                  Por prazo
+                </ModoBtn>
+                <ModoBtn ativo={modo === "manual"} onClick={() => setModo("manual")}>
+                  Valor fixo
+                </ModoBtn>
+              </div>
             </div>
 
+            {/* Sugestão: fallback quando não há renda (nunca mostrar R$ 0,00) */}
+            {modo === "sugestao" &&
+              (temSugestao ? (
+                <div className="rounded-lg border border-mod-financa/25 bg-mod-financa/10 px-3 py-2 text-sm">
+                  Sugestão:{" "}
+                  <span className="font-mono font-medium text-mod-financa">
+                    {formatarReais(dados.sugestaoValorMensal)}/mês
+                  </span>{" "}
+                  <span className="text-muted">(20% do que sobra por mês)</span>
+                </div>
+              ) : !temRenda ? (
+                <div className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-3 text-sm">
+                  <p className="text-soft">
+                    Registre sua renda pra eu calcular quanto dá pra guardar.
+                  </p>
+                  {onRegistrar && (
+                    <button
+                      type="button"
+                      onClick={onRegistrar}
+                      className="self-start rounded-lg bg-royal-500 px-3 py-1.5 text-xs font-medium text-white shadow-glowAccent transition hover:bg-royal-600"
+                    >
+                      + Registrar renda no chat
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-3 text-sm text-soft">
+                  Seus gastos estão consumindo toda a renda. Reveja os gastos ou
+                  defina um valor fixo pra começar aos poucos.
+                </div>
+              ))}
+
+            {/* Por prazo: data-alvo + preview do mensal derivado */}
+            {modo === "prazo" && (
+              <div className="flex flex-col gap-2">
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="text-soft">Até quando quer juntar?</span>
+                  <input
+                    type="month"
+                    value={dataAlvo}
+                    min={proximoMesISO()}
+                    onChange={(e) => setDataAlvo(e.target.value)}
+                    className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-royal-500 [color-scheme:dark]"
+                  />
+                </label>
+                {mensalPrazo > 0 && (
+                  <p className="text-xs text-muted">
+                    Pra juntar {formatarReais(metaNum)} em {mesesPrazo} meses,
+                    guarde{" "}
+                    <span className="font-mono font-medium text-mod-financa">
+                      {formatarReais(mensalPrazo)}/mês
+                    </span>
+                    .
+                  </p>
+                )}
+                {metaNum <= 0 && (
+                  <p className="text-xs text-muted">
+                    Preencha a meta em R$ abaixo pra eu calcular o valor mensal.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Valor fixo */}
             {modo === "manual" && (
               <input
                 value={valorManual}
                 onChange={(e) => setValorManual(e.target.value)}
                 placeholder="Quanto guardar por mês (R$)"
                 inputMode="decimal"
-                className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm tabular-nums outline-none focus:border-royal-500"
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-mono tabular-nums outline-none focus:border-royal-500"
               />
             )}
 
-            <input
-              value={metaValor}
-              onChange={(e) => setMetaValor(e.target.value)}
-              placeholder={`Meta em R$ (opcional — sugestão: ${formatarReais(dados.sugestaoMetaEmergencia)})`}
-              inputMode="decimal"
-              className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm tabular-nums outline-none focus:border-royal-500"
-            />
+            {/* Meta em R$ com racional explícito */}
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-soft">Meta em R$ (opcional)</span>
+              <input
+                value={metaValor}
+                onChange={(e) => setMetaValor(e.target.value)}
+                placeholder="Ex.: 5000"
+                inputMode="decimal"
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-mono tabular-nums outline-none focus:border-royal-500"
+              />
+              {temDespesa && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setMetaValor(String(dados.sugestaoMetaEmergencia))
+                  }
+                  className="self-start text-left text-xs text-muted hover:text-soft"
+                >
+                  Reserva de emergência = {dados.mesesReservaEmergencia} meses das
+                  suas despesas ({formatarReais(dados.media.despesaMedia)}/mês) ={" "}
+                  <span className="text-glow-blue underline">
+                    {formatarReais(dados.sugestaoMetaEmergencia)}
+                  </span>
+                </button>
+              )}
+            </label>
 
             {erro && <p className="text-xs text-mod-financa">{erro}</p>}
 
@@ -238,7 +368,7 @@ export default function PlanoReserva() {
       {/* Pergunta livre (mantém a regra anti-investimento do motor) */}
       <Card>
         <Eyebrow>Pergunte ao Gennys</Eyebrow>
-        <p className="mt-1 text-xs text-muted">
+        <p className="mt-1 text-sm text-soft">
           Ex.: &quot;onde invisto esse dinheiro?&quot;
         </p>
         <div className="mt-2 flex gap-2">
@@ -246,36 +376,102 @@ export default function PlanoReserva() {
             value={pergunta}
             onChange={(e) => setPergunta(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && perguntar()}
-            className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-royal-500"
+            disabled={perguntando}
+            className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-royal-500 disabled:opacity-60"
             placeholder="Sua pergunta…"
           />
           <Botao onClick={perguntar} disabled={perguntando}>
             {perguntando ? "…" : "Perguntar"}
           </Botao>
         </div>
-        {resposta && (
-          <p className="mt-2 rounded-lg bg-white/5 p-2.5 text-sm text-foreground">
-            {resposta}
-          </p>
+
+        {perguntando && (
+          <div className="mt-2 space-y-1.5" aria-hidden>
+            <div className="h-3 w-full animate-pulse rounded bg-white/10" />
+            <div className="h-3 w-2/3 animate-pulse rounded bg-white/10" />
+          </div>
+        )}
+
+        {!perguntando && resposta && (
+          <div className="mt-2 rounded-lg bg-white/5 p-2.5">
+            <p className="text-sm text-foreground">{resposta}</p>
+            {erroPergunta && (
+              <button
+                type="button"
+                onClick={perguntar}
+                className="mt-2 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-foreground transition hover:bg-white/5"
+              >
+                Tentar de novo
+              </button>
+            )}
+          </div>
         )}
       </Card>
     </div>
   );
 }
 
-function Roteiro({ plano }: { plano: PlanoDados }) {
-  const passos: { titulo: string; detalhe: string | null; estado: "concluido" | "andamento" | "pendente" }[] = [
+function ModoBtn({
+  children,
+  ativo,
+  onClick,
+}: {
+  children: React.ReactNode;
+  ativo: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-lg border px-2 py-2 text-center text-xs font-medium transition ${
+        ativo
+          ? "border-mod-financa bg-mod-financa/15 text-foreground"
+          : "border-white/10 bg-white/5 text-muted hover:text-soft"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Roteiro({
+  plano,
+  media,
+}: {
+  plano: PlanoDados;
+  media: { despesaMedia: number };
+}) {
+  const passos: {
+    titulo: string;
+    detalhe: string | null;
+    estado: "concluido" | "andamento" | "pendente";
+  }[] = [
     { titulo: "Objetivo definido", detalhe: plano.objetivo, estado: "concluido" },
     {
       titulo: `Guardar ${formatarReais(plano.valorMensal)}/mês`,
-      detalhe: plano.modo === "sugestao" ? "sugestão do Gennys" : "definido por você",
+      detalhe:
+        plano.modo === "sugestao"
+          ? "sugestão do Gennys"
+          : plano.modo === "prazo"
+            ? "pra bater a meta no prazo"
+            : "definido por você",
       estado: "andamento",
     },
   ];
   if (plano.metaValor) {
+    // Racional da meta quando bate com a reserva de emergência (6x despesa).
+    const ehEmergencia =
+      media.despesaMedia > 0 &&
+      Math.abs(plano.metaValor - media.despesaMedia * 6) <=
+        media.despesaMedia * 0.5;
     passos.push({
       titulo: `Alcançar ${formatarReais(plano.metaValor)}`,
-      detalhe: plano.prazoMeses ? `~${plano.prazoMeses} meses` : null,
+      detalhe: ehEmergencia
+        ? "≈ 6 meses das suas despesas"
+        : plano.prazoMeses
+          ? `~${plano.prazoMeses} meses`
+          : null,
       estado: "pendente",
     });
   }

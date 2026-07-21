@@ -10,6 +10,7 @@ const config: Config = {
     extend: {
       colors: {
         foreground: "var(--foreground)",
+        soft: "var(--soft)",
         muted: "var(--muted)",
         royal: {
           900: "#0a1128",

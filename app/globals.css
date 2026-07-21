@@ -27,6 +27,7 @@
   --data-out: #fb7185; /* coral — "gastei" */
 
   --foreground: #e8eefc;
+  --soft: #c0c3d4; /* texto de apoio — mais contraste que muted (AA) */
   --muted: #8ea3cc;
 }
 
