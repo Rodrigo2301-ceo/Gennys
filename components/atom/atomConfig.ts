@@ -18,12 +18,12 @@ export const DURACAO_TRANSITORIA: Record<string, number> = {
 
 // Velocidade-alvo das órbitas por estado (rad/s), suavizada com lerp.
 export const VELOCIDADE_ORBITA: Record<AtomEstado, number> = {
-  idle: 0.35,
-  typing: 0.7,
-  processing: 2.4,
-  success: 1.2,
-  error: 0.5,
-  photo: 0.5,
+  idle: 0.6,
+  typing: 1.0,
+  processing: 2.6,
+  success: 1.4,
+  error: 0.7,
+  photo: 0.7,
 };
 
 // Intensidade emissiva-alvo do núcleo por estado.
@@ -49,7 +49,8 @@ export const QUALIDADE_ALTA: QualidadeConfig = {
   segmentosNucleo: 48,
   segmentosTorus: [64, 20],
   particulas: 90,
-  dpr: [1, 2],
+  // dpr limitado a 1.5: retina completa não compensa o custo num ícone 3D.
+  dpr: [1, 1.5],
 };
 
 export const QUALIDADE_BAIXA: QualidadeConfig = {
@@ -63,5 +64,5 @@ export const QUALIDADE_BAIXA: QualidadeConfig = {
 // Cores base do átomo (azul royal + brilhos).
 export const COR_NUCLEO = "#2563eb";
 export const COR_GLOW = "#67e8f9";
-export const COR_ANEL = "#93c5fd";
+export const COR_ANEL = "#8fa4c7"; // azul-acinzentado cromado (referência)
 export const COR_ERRO = "#f97316"; // laranja/vermelho para erro/dúvida

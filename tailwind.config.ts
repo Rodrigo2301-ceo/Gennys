@@ -41,6 +41,8 @@ const config: Config = {
       boxShadow: {
         glow: "0 0 40px -8px rgba(103, 232, 249, 0.35)",
         glowAccent: "0 0 24px -6px rgba(37, 99, 235, 0.55)",
+        // Glow da pill de navegação ativa (azul-claro, glassmorphism premium).
+        glowPill: "0 0 16px -3px rgba(147, 197, 253, 0.5)",
       },
     },
   },

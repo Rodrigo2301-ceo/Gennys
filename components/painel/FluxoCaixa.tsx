@@ -4,11 +4,12 @@ import { useEffect, useState } from "react";
 import type { EntryLike } from "@/lib/entryDisplay";
 import { formatarReais } from "@/lib/entryDisplay";
 import { Card, Eyebrow } from "@/components/ui/base";
+import { cores } from "@/lib/theme";
 
 // Fluxo de caixa: única viz nova, derivada das transações já registradas.
 // Receita (lavanda, sólida, com fill) vs Despesa (coral, tracejada) por mês.
-const IN = "#a5b4fc";
-const OUT = "#fb7185";
+const IN = cores.dataIn;
+const OUT = cores.dataOut;
 
 function mesKey(iso: string): string {
   return new Intl.DateTimeFormat("en-CA", {

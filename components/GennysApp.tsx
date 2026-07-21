@@ -141,21 +141,29 @@ export default function GennysApp({
   }
 
   return (
-    <main className="relative flex min-h-dvh flex-col overflow-hidden">
+    <main
+      className="relative flex min-h-dvh flex-col overflow-hidden"
+      style={{
+        // Vazio premium: gradiente radial azul-marinho, glow central atrás do
+        // átomo, bordas quase preto-azuladas. Escopo: só a home (inline).
+        background:
+          "radial-gradient(680px 560px at 50% 36%, rgba(38,82,168,0.6) 0%, rgba(22,48,110,0.38) 45%, transparent 76%), radial-gradient(130% 110% at 50% 40%, #0c1733 0%, #060d20 100%)",
+      }}
+    >
       <header className="relative z-10 flex items-center justify-between px-5 py-4">
         <button
           onClick={() => setPainelAberto(true)}
           aria-label="Abrir menu"
-          className="grid h-9 w-9 place-items-center rounded-lg text-foreground transition hover:bg-white/10"
+          className="grid h-9 w-9 place-items-center rounded-lg text-white/90 transition duration-200 hover:bg-white/10 hover:text-white"
         >
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
             <path d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
         <SeletorModelo provedorInicial={aiProvider} />
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}
-          className="text-sm text-muted transition hover:text-foreground"
+          className="text-sm text-muted transition duration-200 hover:text-foreground"
         >
           Sair
         </button>
@@ -169,9 +177,11 @@ export default function GennysApp({
       <section className="relative min-h-0 flex-1">
         <Atom3D estado={estado} corModulo={corModulo} />
         {feed.length === 0 && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-6 text-center">
-            <p className="text-sm text-muted">
-              Oi, {nome.split(" ")[0]}. Me conta o que rolou.
+          <div className="pointer-events-none absolute inset-x-0 bottom-10 px-6 text-center">
+            <p className="font-sans text-[28px] font-medium leading-snug text-white sm:text-[32px]">
+              Oi, {nome.split(" ")[0]}.
+              <br />
+              Me conta o que rolou.
             </p>
           </div>
         )}

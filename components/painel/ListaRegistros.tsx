@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import EntryRow from "./EntryRow";
+import { EmptyState } from "@/components/ui/base";
 import type { EntryLike } from "@/lib/entryDisplay";
 
 export default function ListaRegistros({
@@ -44,7 +45,7 @@ export default function ListaRegistros({
 
   const visiveis = filtro ? entries.filter(filtro) : entries;
   if (visiveis.length === 0) {
-    return <p className="text-sm text-muted">{vazio}</p>;
+    return <EmptyState compacto titulo={vazio} />;
   }
 
   return (

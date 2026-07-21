@@ -9,6 +9,7 @@ import {
   CabecalhoTela,
   Card,
   Chip,
+  EmptyState,
   Eyebrow,
   HeroNumero,
   IconeTile,
@@ -16,6 +17,7 @@ import {
   SecaoTitulo,
 } from "@/components/ui/base";
 import { Chama, Livro } from "@/components/ui/icones";
+import { cores } from "@/lib/theme";
 
 const CYAN = CORES_MODULO.estudo; // #22d3ee
 
@@ -66,7 +68,7 @@ export default function AbaEstudos() {
         titulo="Estudos"
         direita={
           resumo ? (
-            <Chip icone={<Chama size={13} />} cor="#f59e0b">
+            <Chip icone={<Chama size={13} />} cor={cores.financa}>
               {resumo.streakDias} {resumo.streakDias === 1 ? "dia" : "dias"}
             </Chip>
           ) : undefined
@@ -91,7 +93,7 @@ export default function AbaEstudos() {
                   title={d}
                   className="h-2.5 flex-1 rounded-full"
                   style={{
-                    backgroundColor: ativo ? CYAN : "rgba(255,255,255,0.10)",
+                    backgroundColor: ativo ? CYAN : cores.borda,
                     boxShadow: ativo ? `0 0 8px -2px ${CYAN}` : undefined,
                   }}
                 />
@@ -106,9 +108,10 @@ export default function AbaEstudos() {
         {!resumo ? (
           <p className="text-sm text-muted">Carregando…</p>
         ) : resumo.porMateria.length === 0 ? (
-          <p className="text-sm text-muted">
-            Nenhuma matéria esta semana. Conta pro Gennys o que você estudou.
-          </p>
+          <EmptyState
+            compacto
+            titulo="Nenhuma matéria esta semana. Conta pro Gennys o que você estudou."
+          />
         ) : (
           <div className="flex flex-col gap-2">
             {resumo.porMateria.map((m) => (

@@ -148,16 +148,15 @@ export default function ChatInput({
         </div>
       )}
 
-      <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-2 py-2 backdrop-blur">
+      <div className="flex items-center gap-1.5 rounded-full border border-white/20 bg-white/15 py-2.5 pl-3 pr-2.5 backdrop-blur-xl">
         <IconeBotao
           titulo="Anexar imagem"
           onClick={() => fileRef.current?.click()}
           disabled={enviando}
         >
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path d="M21 15l-5-5L5 21" />
-            <path d="M3 16V5a2 2 0 0 1 2-2h11" />
-            <circle cx="8.5" cy="8.5" r="1.5" />
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 8.8A2.3 2.3 0 0 1 6.3 6.5h1.2l1.2-1.9a1.5 1.5 0 0 1 1.27-.7h4.06a1.5 1.5 0 0 1 1.27.7l1.2 1.9h1.2A2.3 2.3 0 0 1 20 8.8v7.9a2.3 2.3 0 0 1-2.3 2.3H6.3A2.3 2.3 0 0 1 4 16.7Z" />
+            <circle cx="12" cy="12.6" r="3.1" />
           </svg>
         </IconeBotao>
 
@@ -181,18 +180,18 @@ export default function ChatInput({
           onKeyDown={onKeyDown}
           placeholder="Fala comigo…"
           disabled={enviando}
-          className="min-w-0 flex-1 bg-transparent px-1 py-1.5 text-foreground placeholder:text-muted/70 outline-none"
+          className="min-w-0 flex-1 bg-transparent px-1 py-1.5 text-white placeholder:text-white/50 outline-none"
         />
 
         <button
           type="button"
           onClick={enviar}
           disabled={enviando || (!texto.trim() && !imagem)}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-royal-500 text-white shadow-glowAccent transition hover:bg-royal-600 disabled:opacity-40 disabled:shadow-none"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-royal-500 transition duration-200 hover:text-glow-blue active:scale-95 disabled:opacity-40"
           aria-label="Enviar"
         >
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M5 12h14M13 6l6 6-6 6" />
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+            <path d="M3.4 20.4 21 12 3.4 3.6l-.01 6.53L14.5 12 3.39 13.87z" />
           </svg>
         </button>
 
@@ -228,10 +227,10 @@ function IconeBotao({
       aria-label={titulo}
       onClick={onClick}
       disabled={disabled}
-      className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl transition disabled:opacity-40 ${
+      className={`grid h-9 w-9 shrink-0 place-items-center rounded-full transition duration-200 disabled:opacity-40 ${
         ativo
           ? "bg-mod-financa/20 text-mod-financa"
-          : "text-muted hover:bg-white/10 hover:text-foreground"
+          : "text-white/80 hover:bg-white/10 hover:text-white"
       }`}
     >
       {children}

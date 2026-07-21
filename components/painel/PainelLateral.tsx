@@ -7,6 +7,7 @@ import AbaEstudos from "./AbaEstudos";
 import AbaBiblia from "./biblia/AbaBiblia";
 import AbaCerebro from "./AbaCerebro";
 import ExcluirConta from "./ExcluirConta";
+import { NavPill } from "@/components/ui/base";
 import { Carteira, Repeticao, Grafico, Livro, Cerebro } from "@/components/ui/icones";
 
 type AbaId = "financeiro" | "produtividade" | "estudos" | "biblia" | "cerebro";
@@ -46,40 +47,35 @@ export default function PainelLateral({
         }`}
         aria-hidden={!aberto}
       >
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
-          <span className="font-display text-lg font-bold tracking-tight text-glow-cyan">
+        <div className="flex items-center justify-between border-b border-white/10 px-3 py-3">
+          <span className="px-1 font-display text-lg font-bold tracking-tight text-glow-cyan">
             Gennys
           </span>
           <button
             onClick={onFechar}
             aria-label="Fechar"
-            className="grid h-9 w-9 place-items-center rounded-lg text-muted transition hover:bg-white/10 hover:text-foreground"
+            className="grid h-11 w-11 place-items-center rounded-xl text-muted transition duration-200 hover:bg-white/10 hover:text-foreground active:scale-95"
           >
-            ✕
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
           </button>
         </div>
 
         <nav className="no-scrollbar flex gap-1.5 overflow-x-auto border-b border-white/10 px-3 py-2.5">
-          {ABAS.map((a) => {
-            const ativa = aba === a.id;
-            return (
-              <button
-                key={a.id}
-                onClick={() => setAba(a.id)}
-                className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                  ativa
-                    ? "bg-royal-500/25 text-foreground"
-                    : "text-muted hover:bg-white/5 hover:text-foreground"
-                }`}
-              >
-                <span className={ativa ? "text-glow-blue" : ""}>{a.icone}</span>
-                {a.rotulo}
-              </button>
-            );
-          })}
+          {ABAS.map((a) => (
+            <NavPill
+              key={a.id}
+              icone={a.icone}
+              ativo={aba === a.id}
+              onClick={() => setAba(a.id)}
+            >
+              {a.rotulo}
+            </NavPill>
+          ))}
         </nav>
 
-        <div className="no-scrollbar flex-1 overflow-y-auto p-4">
+        <div key={aba} className="no-scrollbar aba-fade flex-1 overflow-y-auto p-4">
           {aba === "financeiro" && <AbaFinanceiro onRegistrar={onFechar} />}
           {aba === "produtividade" && <AbaProdutividade />}
           {aba === "estudos" && <AbaEstudos />}

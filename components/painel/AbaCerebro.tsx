@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import GrafoCerebro from "./cerebro/GrafoCerebro";
+import { EmptyState, NavPill } from "@/components/ui/base";
+import { Cerebro } from "@/components/ui/icones";
 
 interface Memoria {
   id: string;
@@ -57,27 +59,13 @@ export default function AbaCerebro() {
             ? "O mapa da sua vida: cada registro é um átomo, agrupado por área."
             : "Tudo que o Gennys guardou sobre você. Edite ou apague à vontade."}
         </p>
-        <div className="flex shrink-0 rounded-lg border border-white/10 p-0.5 text-xs">
-          <button
-            onClick={() => setModo("grafo")}
-            className={`rounded-md px-2.5 py-1 transition ${
-              modo === "grafo"
-                ? "bg-royal-500/25 text-foreground"
-                : "text-muted hover:text-foreground"
-            }`}
-          >
+        <div className="flex shrink-0 gap-1">
+          <NavPill ativo={modo === "grafo"} onClick={() => setModo("grafo")}>
             Grafo
-          </button>
-          <button
-            onClick={() => setModo("lista")}
-            className={`rounded-md px-2.5 py-1 transition ${
-              modo === "lista"
-                ? "bg-royal-500/25 text-foreground"
-                : "text-muted hover:text-foreground"
-            }`}
-          >
+          </NavPill>
+          <NavPill ativo={modo === "lista"} onClick={() => setModo("lista")}>
             Memórias
-          </button>
+          </NavPill>
         </div>
       </div>
 
@@ -86,7 +74,10 @@ export default function AbaCerebro() {
       ) : !memorias ? (
         <p className="text-sm text-muted">Carregando…</p>
       ) : memorias.length === 0 ? (
-        <p className="text-sm text-muted">Nenhuma memória guardada ainda.</p>
+        <EmptyState icone={<Cerebro size={26} />} titulo="Nada na memória ainda">
+          Conforme você conversa, o Gennys vai guardando fatos sobre você aqui.
+          Fala com ele pra começar.
+        </EmptyState>
       ) : (
         <ul className="flex flex-col gap-2">
           {memorias.map((m) => (

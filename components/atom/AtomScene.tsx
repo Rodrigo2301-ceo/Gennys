@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
+// Ambiente procedural (gerado localmente): dá o reflexo de "estúdio" no metal
+// sem baixar HDR de CDN — a CSP do app (connect-src 'self') bloquearia.
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import {
   type AtomEstado,
   type QualidadeConfig,
@@ -14,23 +17,18 @@ import {
   COR_ERRO,
 } from "./atomConfig";
 
+// Arranjo clássico do símbolo de átomo (referência): três órbitas do MESMO
+// raio, inclinadas quase de perfil e distribuídas em leque (0°/120°/240°).
+// `leque` gira no plano da tela (grupo externo); o tilt de perfil é aplicado
+// num grupo interno — a ordem importa, senão os anéis colapsam numa elipse só.
+// `fase` é a posição inicial do elétron na órbita (defasadas entre si).
+const TILT_X = 1.15;
 const RINGS = [
-  { tilt: [0.25, 0, 0] as const, R: 1.5, mult: 1.0, eletrons: 2, tube: 0.022 },
-  {
-    tilt: [Math.PI / 2.3, 0.4, 0.2] as const,
-    R: 1.75,
-    mult: -0.85,
-    eletrons: 2,
-    tube: 0.02,
-  },
-  {
-    tilt: [-0.6, Math.PI / 2.5, 0.9] as const,
-    R: 2.0,
-    mult: 1.3,
-    eletrons: 1,
-    tube: 0.018,
-  },
+  { leque: 0, R: 1.6, mult: 1.0, fase: 0.6, tube: 0.026 },
+  { leque: (2 * Math.PI) / 3, R: 1.6, mult: -0.8, fase: 2.7, tube: 0.026 },
+  { leque: (-2 * Math.PI) / 3, R: 1.6, mult: 1.25, fase: 4.4, tube: 0.026 },
 ];
+
 
 // Textura radial (branco -> transparente) para o halo aditivo (glow).
 function useHaloTexture(): THREE.Texture {
@@ -62,21 +60,36 @@ export default function AtomScene({
   estado,
   corModulo,
   qualidade,
+  reduzMov = false,
 }: {
   estado: AtomEstado;
   corModulo: string;
   qualidade: QualidadeConfig;
+  reduzMov?: boolean;
 }) {
   const tiltRef = useRef<THREE.Group>(null!);
   const spinRef = useRef<THREE.Group>(null!);
   const coreRef = useRef<THREE.Mesh>(null!);
-  const coreMatRef = useRef<THREE.MeshStandardMaterial>(null!);
+  const coreMatRef = useRef<THREE.MeshPhysicalMaterial>(null!);
   const haloRef = useRef<THREE.Sprite>(null!);
   const haloMatRef = useRef<THREE.SpriteMaterial>(null!);
   const ringSpins = useRef<THREE.Group[]>([]);
   const particlesRef = useRef<THREE.Points>(null!);
 
   const halo = useHaloTexture();
+
+  // Environment map procedural: reflexo metal/vidro de estúdio, offline.
+  const { gl, scene } = useThree();
+  useEffect(() => {
+    const pmrem = new THREE.PMREMGenerator(gl);
+    const env = pmrem.fromScene(new RoomEnvironment(), 0.04);
+    scene.environment = env.texture;
+    return () => {
+      scene.environment = null;
+      env.texture.dispose();
+      pmrem.dispose();
+    };
+  }, [gl, scene]);
 
   // Cores base como THREE.Color (evita realocar por frame).
   const cores = useMemo(
@@ -85,6 +98,7 @@ export default function AtomScene({
       glow: new THREE.Color(COR_GLOW),
       erro: new THREE.Color(COR_ERRO),
       modulo: new THREE.Color(corModulo),
+      prata: new THREE.Color("#dbe6ff"), // superfície cromada do núcleo
       tmpCore: new THREE.Color(),
       tmpHalo: new THREE.Color(),
     }),
@@ -129,8 +143,8 @@ export default function AtomScene({
     const dt = Math.min(delta, 0.05); // trava passos grandes (aba volta ao foco)
     const now = performance.now();
 
-    // Parallax sutil ao ponteiro/toque.
-    if (tiltRef.current) {
+    // Parallax sutil ao ponteiro/toque (desligado em "reduzir movimento").
+    if (tiltRef.current && !reduzMov) {
       const px = state.pointer.x;
       const py = state.pointer.y;
       tiltRef.current.rotation.x +=
@@ -139,9 +153,9 @@ export default function AtomScene({
         (px * 0.3 - tiltRef.current.rotation.y) * 0.05;
     }
 
-    // Rotação global lenta contínua.
-    if (spinRef.current) {
-      spinRef.current.rotation.y += dt * 0.12;
+    // Rotação global bem lenta (tombamento 3D sutil; some em reduzir-movimento).
+    if (spinRef.current && !reduzMov) {
+      spinRef.current.rotation.y += dt * 0.06;
     }
 
     // Suaviza órbita e brilho rumo aos alvos do estado.
@@ -150,21 +164,26 @@ export default function AtomScene({
     suav.current.orbita += (alvoOrbita - suav.current.orbita) * 0.06;
     suav.current.brilho += (alvoBrilho - suav.current.brilho) * 0.08;
 
-    // Gira cada anel de elétrons.
+    // Motor central: cada elétron viaja pela SUA órbita (giro em z do grupo,
+    // que carrega o elétron sobre o torus — nunca sai da linha). É a única
+    // animação mantida em "reduzir movimento", num ritmo mais calmo.
+    const fatorMov = reduzMov ? 0.4 : 1;
     for (let i = 0; i < ringSpins.current.length; i++) {
       const g = ringSpins.current[i];
-      if (g) g.rotation.z += dt * suav.current.orbita * RINGS[i].mult;
+      if (g) g.rotation.z += dt * suav.current.orbita * RINGS[i].mult * fatorMov;
     }
 
-    // Núcleo: respiração + pulso proporcional à órbita.
+    // Núcleo: respiração + pulso proporcional à órbita (estático se reduzMov).
+    const resp = reduzMov ? 0 : 1;
     const pulso = 0.03 + (suav.current.orbita / VELOCIDADE_ORBITA.processing) * 0.06;
-    const escalaBase = 1 + Math.sin(t * 1.4) * 0.03 + Math.sin(t * 8) * pulso * 0.4;
+    const escalaBase =
+      1 + (Math.sin(t * 1.4) * 0.03 + Math.sin(t * 8) * pulso * 0.4) * resp;
 
     // Cores default; sobrescritas pelos transitórios abaixo.
     cores.tmpCore.copy(cores.nucleo);
     cores.tmpHalo.copy(cores.glow);
-    let haloEscala = 2.6 + Math.sin(t * 1.4) * 0.15;
-    let haloOpacidade = 0.42 + (suav.current.brilho - 1) * 0.25;
+    let haloEscala = 2.8 + Math.sin(t * 1.4) * 0.15 * resp;
+    let haloOpacidade = 0.48 + (suav.current.brilho - 1) * 0.25;
     let emissivo = suav.current.brilho + Math.sin(t * 2.2) * 0.06;
     let shakeX = 0;
     let escalaNucleo = escalaBase;
@@ -232,9 +251,12 @@ export default function AtomScene({
     if (spinRef.current) spinRef.current.position.x = shakeX;
     if (coreRef.current) coreRef.current.scale.setScalar(escalaNucleo);
     if (coreMatRef.current) {
-      coreMatRef.current.emissiveIntensity = emissivo;
+      // Cromado em idle (emissivo quase zero, reflexo domina); os estados
+      // reativos continuam acendendo o núcleo por cima do metal.
+      coreMatRef.current.emissiveIntensity =
+        0.16 + Math.max(0, emissivo - 1) * 1.25;
       coreMatRef.current.emissive.copy(cores.tmpCore);
-      coreMatRef.current.color.copy(cores.tmpCore);
+      coreMatRef.current.color.copy(cores.tmpCore).lerp(cores.prata, 0.7);
     }
     if (haloRef.current) haloRef.current.scale.setScalar(haloEscala);
     if (haloMatRef.current) {
@@ -245,7 +267,11 @@ export default function AtomScene({
 
   return (
     <group ref={tiltRef}>
-      <ambientLight intensity={0.35} />
+      <ambientLight intensity={0.3} />
+      {/* Key light: dá o highlight especular "cromado" no núcleo */}
+      <directionalLight position={[3, 4, 5]} intensity={0.9} color="#ffffff" />
+      {/* Rim light azul-clara: contorno de vidro no lado oposto */}
+      <pointLight position={[-3, -1.5, 3]} intensity={0.45} color="#93c5fd" />
       <group ref={spinRef}>
         {/* Halo (glow aditivo, tipo bloom mesmo sem pós-processamento) */}
         <sprite ref={haloRef} scale={2.6}>
@@ -260,16 +286,18 @@ export default function AtomScene({
           />
         </sprite>
 
-        {/* Núcleo esférico emissivo */}
+        {/* Núcleo: esfera metal/vidro com reflexo de estúdio (envMap) */}
         <mesh ref={coreRef}>
           <icosahedronGeometry args={[0.62, 3]} />
-          <meshStandardMaterial
+          <meshPhysicalMaterial
             ref={coreMatRef}
             color={COR_NUCLEO}
             emissive={COR_NUCLEO}
-            emissiveIntensity={1}
-            roughness={0.3}
-            metalness={0.1}
+            emissiveIntensity={0.16}
+            roughness={0.14}
+            metalness={0.85}
+            clearcoat={1}
+            envMapIntensity={1.1}
           />
         </mesh>
 
@@ -285,15 +313,18 @@ export default function AtomScene({
           />
         </mesh>
 
-        {/* Anéis de elétrons */}
+        {/* Órbitas cromadas + 1 elétron por anel (viaja com o giro do grupo).
+            Fora→dentro: leque (plano da tela) · tilt de perfil fixo · giro do
+            elétron. O elétron é filho do giro, logo nunca sai da sua linha. */}
         {RINGS.map((ring, i) => (
-          <group key={i} rotation={[ring.tilt[0], ring.tilt[1], ring.tilt[2]]}>
+          <group key={i} rotation={[0, 0, ring.leque]}>
+            <group rotation={[TILT_X, 0, 0]}>
             <group
               ref={(el) => {
                 if (el) ringSpins.current[i] = el;
               }}
             >
-              {/* trilha da órbita */}
+              {/* trilha da órbita: metal fino com reflexo */}
               <mesh>
                 <torusGeometry
                   args={[
@@ -303,31 +334,32 @@ export default function AtomScene({
                     qualidade.segmentosTorus[0],
                   ]}
                 />
-                <meshBasicMaterial
+                <meshPhysicalMaterial
                   color={COR_ANEL}
-                  transparent
-                  opacity={0.28}
-                  blending={THREE.AdditiveBlending}
-                  depthWrite={false}
+                  metalness={0.9}
+                  roughness={0.18}
+                  clearcoat={1}
+                  envMapIntensity={1.3}
                 />
               </mesh>
-              {/* elétrons */}
-              {Array.from({ length: ring.eletrons }).map((_, e) => {
-                const ang = (e / ring.eletrons) * Math.PI * 2;
-                return (
-                  <mesh
-                    key={e}
-                    position={[
-                      Math.cos(ang) * ring.R,
-                      Math.sin(ang) * ring.R,
-                      0,
-                    ]}
-                  >
-                    <sphereGeometry args={[0.07, 16, 16]} />
-                    <meshBasicMaterial color={COR_GLOW} />
-                  </mesh>
-                );
-              })}
+              {/* elétron: esfera cromada sobre a órbita */}
+              <mesh
+                position={[
+                  Math.cos(ring.fase) * ring.R,
+                  Math.sin(ring.fase) * ring.R,
+                  0,
+                ]}
+              >
+                <sphereGeometry args={[0.11, 20, 20]} />
+                <meshPhysicalMaterial
+                  color="#e6eefc"
+                  metalness={0.75}
+                  roughness={0.12}
+                  clearcoat={1}
+                  envMapIntensity={1.2}
+                />
+              </mesh>
+            </group>
             </group>
           </group>
         ))}

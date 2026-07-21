@@ -2,8 +2,9 @@
 // (sem estado/lógica), reusados por todas as telas do painel.
 
 import type { CSSProperties, ReactNode } from "react";
+import { cores } from "@/lib/theme";
 
-const ACCENT = "#2563eb";
+const ACCENT = cores.accent;
 
 // Eyebrow: mono, caixa alta, tracking largo, cor accent (royal por padrão).
 export function Eyebrow({
@@ -51,7 +52,7 @@ export function Card({
   glow?: boolean;
 }) {
   const style: CSSProperties = {
-    borderColor: accent ? `${accent}55` : "rgba(255,255,255,0.10)",
+    borderColor: accent ? `${accent}55` : cores.borda,
   };
   if (glow) style.boxShadow = `0 0 26px -8px ${accent ?? "rgba(37,99,235,0.65)"}`;
   return (
@@ -84,7 +85,7 @@ export function IconeTile({
 // Badge de status: pill pequeno.
 export function Badge({
   children,
-  cor = "#8ea3cc",
+  cor = cores.muted,
 }: {
   children: ReactNode;
   cor?: string;
@@ -137,7 +138,7 @@ export function ProgressBar({
         className="h-full rounded-full transition-all"
         style={{
           width: `${pct}%`,
-          background: `linear-gradient(90deg, #1e40af, ${cor})`,
+          background: `linear-gradient(90deg, ${cores.accentStrong}, ${cor})`,
         }}
       />
     </div>
@@ -214,6 +215,85 @@ export function SecaoTitulo({ children }: { children: ReactNode }) {
     <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">
       {children}
     </h3>
+  );
+}
+
+// Pill de navegação (barra de abas e toggles internos). Estado ativo =
+// translúcido + borda azul brilhante + glow externo (glassmorphism premium);
+// inativo = texto atenuado com hover sutil. Cor/estética 100% da paleta.
+export function NavPill({
+  children,
+  icone,
+  ativo,
+  onClick,
+  className = "",
+}: {
+  children: ReactNode;
+  icone?: ReactNode;
+  ativo: boolean;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={ativo}
+      className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium transition duration-200 active:scale-[0.97] ${
+        ativo
+          ? "border border-glow-blue/60 bg-royal-500/20 text-foreground shadow-glowPill backdrop-blur-sm"
+          : "border border-transparent text-muted hover:bg-white/5 hover:text-foreground"
+      } ${className}`}
+    >
+      {icone && (
+        <span className={ativo ? "text-glow-blue" : "text-current"}>{icone}</span>
+      )}
+      {children}
+    </button>
+  );
+}
+
+// Empty state padrão: ícone + título (sans bold) + corpo (mono muted) + ação
+// primária opcional. Centralizado, com ritmo vertical consistente. `compacto`
+// serve para vazios de sub-seção (uma linha), sem o bloco alto.
+export function EmptyState({
+  icone,
+  titulo,
+  children,
+  acao,
+  compacto = false,
+}: {
+  icone?: ReactNode;
+  titulo: string;
+  children?: ReactNode;
+  acao?: ReactNode;
+  compacto?: boolean;
+}) {
+  if (compacto) {
+    return (
+      <div className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/5 px-3.5 py-3">
+        {icone && <span className="shrink-0 text-muted">{icone}</span>}
+        <p className="text-sm text-muted">{titulo}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex min-h-[52vh] flex-col items-center justify-center gap-3 px-6 py-10 text-center">
+      {icone && (
+        <span className="grid h-14 w-14 place-items-center rounded-2xl border border-white/10 bg-white/5 text-glow-blue">
+          {icone}
+        </span>
+      )}
+      <h3 className="font-display text-lg font-bold tracking-tight text-foreground">
+        {titulo}
+      </h3>
+      {children && (
+        <p className="max-w-[260px] text-sm leading-relaxed text-muted">
+          {children}
+        </p>
+      )}
+      {acao && <div className="mt-1">{acao}</div>}
+    </div>
   );
 }
 

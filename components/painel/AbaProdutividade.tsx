@@ -9,11 +9,13 @@ import {
   Card,
   CabecalhoTela,
   Chip,
+  EmptyState,
   Eyebrow,
   HeroNumero,
   ProgressBar,
 } from "@/components/ui/base";
 import { Calendario, Chama, Halteres, Repeticao } from "@/components/ui/icones";
+import { cores } from "@/lib/theme";
 
 const TEAL = CORES_MODULO.habito; // #14b8a6
 
@@ -74,9 +76,7 @@ function FrequenciaSemanal({ entries }: { entries: EntryLike[] }) {
                 title={dia}
                 className="h-2.5 w-2.5 rounded-full"
                 style={{
-                  backgroundColor: g.diasSet.has(dia)
-                    ? TEAL
-                    : "rgba(255,255,255,0.10)",
+                  backgroundColor: g.diasSet.has(dia) ? TEAL : cores.borda,
                   boxShadow: g.diasSet.has(dia) ? `0 0 8px -1px ${TEAL}` : undefined,
                 }}
               />
@@ -176,7 +176,7 @@ export default function AbaProdutividade() {
           <Card className="flex items-center gap-3">
             <span
               className="grid h-12 w-12 shrink-0 place-items-center rounded-full"
-              style={{ color: "#f59e0b", backgroundColor: "#f59e0b1f" }}
+              style={{ color: cores.financa, backgroundColor: `${cores.financa}1f` }}
             >
               <Chama size={22} />
             </span>
@@ -211,7 +211,7 @@ export default function AbaProdutividade() {
           <>
             <FrequenciaSemanal entries={habitosGerais} />
             {habitosGerais.length === 0 ? (
-              <p className="text-sm text-muted">Nenhum hábito registrado.</p>
+              <EmptyState compacto titulo="Nenhum hábito registrado." />
             ) : (
               <ul className="flex flex-col gap-2">
                 {habitosGerais.map((e) => (
@@ -241,7 +241,7 @@ export default function AbaProdutividade() {
           <>
             <FrequenciaSemanal entries={treinos} />
             {treinos.length === 0 ? (
-              <p className="text-sm text-muted">Nenhum treino registrado.</p>
+              <EmptyState compacto titulo="Nenhum treino registrado." />
             ) : (
               <ul className="flex flex-col gap-2">
                 {treinos.map((e) => (

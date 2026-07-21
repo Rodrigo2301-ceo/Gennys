@@ -85,6 +85,26 @@ body {
     box-shadow: 0 0 24px -6px var(--accent);
   }
 
+  /* Transição suave ao trocar de aba (fade + leve slide). */
+  .aba-fade {
+    animation: aba-fade 200ms ease-out;
+  }
+  @keyframes aba-fade {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .aba-fade {
+      animation: none;
+    }
+  }
+
   /* Textura de grid MUITO sutil (fundo da tela de Estudos) */
   .bg-grid {
     background-image:

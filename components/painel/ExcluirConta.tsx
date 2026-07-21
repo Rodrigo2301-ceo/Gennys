@@ -42,8 +42,11 @@ export default function ExcluirConta() {
     return (
       <button
         onClick={() => setAberto(true)}
-        className="text-xs text-muted transition hover:text-mod-financa"
+        className="mx-auto flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-muted transition duration-200 hover:bg-mod-financa/10 hover:text-mod-financa"
       >
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" />
+        </svg>
         Excluir minha conta
       </button>
     );

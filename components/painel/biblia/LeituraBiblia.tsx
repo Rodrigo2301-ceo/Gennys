@@ -5,8 +5,9 @@ import type { LivroBiblia, Marcacao } from "./tipos";
 import { CORES_MARCA } from "./tipos";
 import { Card, Eyebrow } from "@/components/ui/base";
 import { Aspas } from "@/components/ui/icones";
+import { cores } from "@/lib/theme";
 
-const BIBLIA = "#93c5fd"; // azul-claro (módulo Bíblia, CLAUDE.md)
+const BIBLIA = cores.biblia; // azul-claro (módulo Bíblia, CLAUDE.md)
 
 interface DadosCapitulo {
   livroCode: string;

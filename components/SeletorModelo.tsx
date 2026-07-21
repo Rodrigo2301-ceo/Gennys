@@ -52,15 +52,15 @@ export default function SeletorModelo({
       <button
         onClick={() => setAberto((v) => !v)}
         disabled={salvando}
-        className="flex items-center gap-1.5 rounded-lg px-2 py-1 font-display text-lg font-bold tracking-tight text-glow-cyan transition hover:bg-white/10 disabled:opacity-60"
+        className="flex items-center gap-1.5 rounded-lg px-2 py-1 font-display text-lg font-bold tracking-tight text-white transition duration-200 hover:bg-white/10 disabled:opacity-60"
         aria-haspopup="listbox"
         aria-expanded={aberto}
       >
-        <Cerebro size={18} />
+        <Cerebro size={18} className="text-glow-blue/80" />
         Gennys
         <Chevron
           size={14}
-          className={`transition-transform ${aberto ? "-rotate-90" : "rotate-90"}`}
+          className={`text-white/60 transition-transform duration-200 ${aberto ? "-rotate-90" : "rotate-90"}`}
         />
       </button>
 

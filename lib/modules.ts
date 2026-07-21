@@ -1,14 +1,15 @@
 import type { TipoEntry } from "@/lib/engine/types";
+import { cores } from "@/lib/theme";
 
 // Cor de cada módulo (CLAUDE.md). Usada no flash de sucesso do átomo
 // e em qualquer indicação visual por tipo. Compartilhada entre motor e UI
-// (sem imports de servidor).
+// (sem imports de servidor). Valores vêm da paleta central em lib/theme.
 export const CORES_MODULO: Record<TipoEntry, string> = {
-  financa: "#f59e0b", // âmbar
-  tarefa: "#14b8a6", // produtividade / verde-azulado
-  habito: "#14b8a6", // produtividade / verde-azulado
-  estudo: "#22d3ee", // ciano
-  nota: "#93c5fd", // azul-claro (neutro)
+  financa: cores.financa, // âmbar
+  tarefa: cores.produtividade, // verde-azulado
+  habito: cores.produtividade, // verde-azulado
+  estudo: cores.estudo, // ciano
+  nota: cores.biblia, // azul-claro (neutro)
 };
 
 export const ROTULO_MODULO: Record<TipoEntry, string> = {
@@ -20,5 +21,5 @@ export const ROTULO_MODULO: Record<TipoEntry, string> = {
 };
 
 export function corDoModulo(tipo: TipoEntry): string {
-  return CORES_MODULO[tipo] ?? "#93c5fd";
+  return CORES_MODULO[tipo] ?? cores.biblia;
 }

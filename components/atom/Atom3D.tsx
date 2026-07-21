@@ -76,11 +76,15 @@ export default function Atom3D({
   const [webgl, setWebgl] = useState(true);
   const [qualidade, setQualidade] = useState<QualidadeConfig>(QUALIDADE_BAIXA);
   const [ativo, setAtivo] = useState(true); // pausa render em background
+  const [reduzMov, setReduzMov] = useState(false); // "reduzir movimento" do SO
 
   useEffect(() => {
     setMontado(true);
     setWebgl(suportaWebGL());
     setQualidade(detectarQualidade());
+    setReduzMov(
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
+    );
 
     const onVis = () => setAtivo(!document.hidden);
     document.addEventListener("visibilitychange", onVis);
@@ -97,13 +101,22 @@ export default function Atom3D({
 
   return (
     <Canvas
-      className="absolute inset-0"
+      // style (não className): o r3f injeta position:relative inline no
+      // wrapper, que venceria a classe e colapsaria o canvas para 150px.
+      style={{ position: "absolute", inset: 0 }}
       dpr={qualidade.dpr}
+      // Anima sempre que a aba está visível; "reduzir movimento" não congela
+      // (a órbita é a essência do ícone), apenas acalma — tratado na cena.
       frameloop={ativo ? "always" : "never"}
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
-      camera={{ position: [0, 0, 5], fov: 50 }}
+      camera={{ position: [0, -0.3, 8], fov: 50 }}
     >
-      <AtomScene estado={estado} corModulo={corModulo} qualidade={qualidade} />
+      <AtomScene
+        estado={estado}
+        corModulo={corModulo}
+        qualidade={qualidade}
+        reduzMov={reduzMov}
+      />
       {qualidade.bloom && <BloomFX />}
     </Canvas>
   );

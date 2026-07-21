@@ -4,9 +4,11 @@ import { useEffect, useState } from "react";
 import type { Versao, Marcacao } from "./tipos";
 import LeituraBiblia from "./LeituraBiblia";
 import MinhasMarcacoes from "./MinhasMarcacoes";
-import { CabecalhoTela } from "@/components/ui/base";
+import { CabecalhoTela, EmptyState, NavPill } from "@/components/ui/base";
+import { Livro } from "@/components/ui/icones";
+import { cores } from "@/lib/theme";
 
-const BIBLIA = "#93c5fd"; // azul-claro (módulo Bíblia, CLAUDE.md)
+const BIBLIA = cores.biblia; // azul-claro (módulo Bíblia, CLAUDE.md)
 
 type Modo = "ler" | "marcacoes";
 
@@ -38,14 +40,15 @@ export default function AbaBiblia() {
 
   if (versoes.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-2 py-10 text-center">
-        <span className="text-3xl">📖</span>
-        <p className="font-medium text-mod-biblia">Bíblia ainda não importada</p>
-        <p className="max-w-[240px] text-sm text-muted">
-          Rode <code className="text-glow-blue">npm run seed:biblia</code> uma vez
-          para carregar a Almeida 1911 (domínio público) no banco.
-        </p>
-      </div>
+      <EmptyState icone={<Livro size={26} />} titulo="Bíblia a caminho">
+        A Almeida 1911 (domínio público) ainda está sendo preparada por aqui.
+        Volte em instantes pra ler e marcar seus versículos favoritos.
+        {process.env.NODE_ENV === "development" && (
+          <span className="mt-2 block text-xs text-muted/70">
+            dev: rode <code className="text-glow-blue">npm run seed:biblia</code>
+          </span>
+        )}
+      </EmptyState>
     );
   }
 
@@ -71,27 +74,16 @@ export default function AbaBiblia() {
           ))}
         </select>
 
-        <div className="ml-auto flex rounded-full border border-white/10 p-0.5 text-xs">
-          <button
-            onClick={() => setModo("ler")}
-            className={`rounded-full px-3 py-1 font-medium transition ${
-              modo === "ler"
-                ? "bg-mod-biblia/20 text-mod-biblia"
-                : "text-muted hover:text-foreground"
-            }`}
-          >
+        <div className="ml-auto flex gap-1">
+          <NavPill ativo={modo === "ler"} onClick={() => setModo("ler")}>
             Ler
-          </button>
-          <button
+          </NavPill>
+          <NavPill
+            ativo={modo === "marcacoes"}
             onClick={() => setModo("marcacoes")}
-            className={`rounded-full px-3 py-1 font-medium transition ${
-              modo === "marcacoes"
-                ? "bg-mod-biblia/20 text-mod-biblia"
-                : "text-muted hover:text-foreground"
-            }`}
           >
             Marcações
-          </button>
+          </NavPill>
         </div>
       </div>
 
