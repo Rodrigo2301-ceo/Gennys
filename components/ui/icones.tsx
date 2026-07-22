@@ -193,3 +193,39 @@ export function Raio({ size, className }: P) {
     </svg>
   );
 }
+
+export function Pessoa({ size, className }: P) {
+  return (
+    <svg {...base(size, className)}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M5.5 20a6.5 6.5 0 0 1 13 0" />
+    </svg>
+  );
+}
+
+export function Cadeado({ size, className }: P) {
+  return (
+    <svg {...base(size, className)}>
+      <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
+      <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" />
+    </svg>
+  );
+}
+
+export function Envelope({ size, className }: P) {
+  return (
+    <svg {...base(size, className)}>
+      <rect x="3" y="5.5" width="18" height="13" rx="2.5" />
+      <path d="m4 7 8 6 8-6" />
+    </svg>
+  );
+}
+
+export function Sair({ size, className }: P) {
+  return (
+    <svg {...base(size, className)}>
+      <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" />
+      <path d="M10 12h10m0 0-3-3m3 3-3 3" />
+    </svg>
+  );
+}

@@ -6,11 +6,17 @@ import AbaProdutividade from "./AbaProdutividade";
 import AbaEstudos from "./AbaEstudos";
 import AbaBiblia from "./biblia/AbaBiblia";
 import AbaCerebro from "./AbaCerebro";
-import ExcluirConta from "./ExcluirConta";
+import AbaPerfil from "./AbaPerfil";
 import { NavPill } from "@/components/ui/base";
-import { Carteira, Repeticao, Grafico, Livro, Cerebro } from "@/components/ui/icones";
+import { Carteira, Repeticao, Grafico, Livro, Cerebro, Pessoa } from "@/components/ui/icones";
 
-type AbaId = "financeiro" | "produtividade" | "estudos" | "biblia" | "cerebro";
+type AbaId =
+  | "financeiro"
+  | "produtividade"
+  | "estudos"
+  | "biblia"
+  | "cerebro"
+  | "perfil";
 
 const ABAS: { id: AbaId; rotulo: string; icone: ReactNode }[] = [
   { id: "financeiro", rotulo: "Financeiro", icone: <Carteira size={16} /> },
@@ -18,6 +24,7 @@ const ABAS: { id: AbaId; rotulo: string; icone: ReactNode }[] = [
   { id: "estudos", rotulo: "Estudos", icone: <Grafico size={16} /> },
   { id: "biblia", rotulo: "Bíblia", icone: <Livro size={16} /> },
   { id: "cerebro", rotulo: "Cérebro", icone: <Cerebro size={16} /> },
+  { id: "perfil", rotulo: "Perfil", icone: <Pessoa size={16} /> },
 ];
 
 export default function PainelLateral({
@@ -81,10 +88,7 @@ export default function PainelLateral({
           {aba === "estudos" && <AbaEstudos />}
           {aba === "biblia" && <AbaBiblia />}
           {aba === "cerebro" && <AbaCerebro />}
-        </div>
-
-        <div className="border-t border-white/10 p-4">
-          <ExcluirConta />
+          {aba === "perfil" && <AbaPerfil />}
         </div>
       </aside>
     </>
