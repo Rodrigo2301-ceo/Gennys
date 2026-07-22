@@ -28,8 +28,12 @@ interface Perfil {
 
 function formatarData(iso: string | null): string {
   if (!iso) return "—";
+  const civil = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const data = civil
+    ? new Date(Number(civil[1]), Number(civil[2]) - 1, Number(civil[3]))
+    : new Date(iso);
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "long" }).format(
-    new Date(iso),
+    data,
   );
 }
 
@@ -96,6 +100,22 @@ export default function AbaPerfil() {
         </div>
       </Card>
 
+      <ConsentimentoIA provider={perfil.aiProvider} />
+
+      <Card>
+        <Eyebrow>Portabilidade dos dados</Eyebrow>
+        <p className="mt-1 text-xs text-soft">
+          Baixe uma cópia autenticada da sua conta em JSON. Senha, hashes e
+          segredos nunca fazem parte do arquivo.
+        </p>
+        <a
+          href="/api/conta/export"
+          className="mt-3 inline-flex rounded-lg border border-white/15 px-3 py-2 text-sm text-foreground transition hover:bg-white/5"
+        >
+          Exportar meus dados
+        </a>
+      </Card>
+
       {/* Segurança: e-mail e senha (exigem senha atual) */}
       <TrocarEmail emailAtual={perfil.email} onSalvo={carregar} />
       <TrocarSenha />
@@ -125,6 +145,108 @@ export default function AbaPerfil() {
 }
 
 // --- Sub-seções ---
+
+function ConsentimentoIA({ provider }: { provider: AiProvider }) {
+  const [estado, setEstado] = useState<{
+    vigente: boolean;
+    grantedAt?: string;
+    version?: string;
+  } | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function carregar() {
+    try {
+      const res = await fetch(
+        `/api/consentimento-ia?provider=${encodeURIComponent(provider)}`,
+        { cache: "no-store" },
+      );
+      const data = await res.json();
+      setEstado({
+        vigente: Boolean(data.vigente),
+        grantedAt: data.grantedAt ?? undefined,
+        version: data.version ?? undefined,
+      });
+    } catch {
+      setEstado({ vigente: false });
+    }
+  }
+
+  useEffect(() => {
+    carregar();
+    // O provider só muda quando o perfil é recarregado.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider]);
+
+  async function alterar(conceder: boolean) {
+    setSalvando(true);
+    setErro(null);
+    try {
+      const res = await fetch("/api/consentimento-ia", {
+        method: conceder ? "POST" : "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          conceder
+            ? { provider, accepted: true, version: estado?.version }
+            : { provider },
+        ),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Não foi possível atualizar.");
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível atualizar.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Card>
+      <div className="flex items-center gap-2">
+        <Cadeado size={15} className="text-muted" />
+        <Eyebrow>Consentimento para IA</Eyebrow>
+      </div>
+      <p className="mt-2 text-xs text-soft">
+        Autoriza o envio de texto, histórico recente e imagens ao provedor atual
+        somente para criar uma proposta. Você ainda confirma antes de qualquer
+        registro ser salvo.
+      </p>
+      <p className="mt-2 text-xs text-muted" aria-live="polite">
+        {!estado
+          ? "Consultando…"
+          : estado.vigente
+            ? `Ativo desde ${new Intl.DateTimeFormat("pt-BR", {
+                dateStyle: "medium",
+              }).format(new Date(estado.grantedAt!))} · versão ${estado.version}`
+            : "Não autorizado para o provedor atual."}
+      </p>
+      {erro && (
+        <p className="mt-2 text-xs text-mod-financa" role="alert">
+          {erro}
+        </p>
+      )}
+      {estado && (
+        <button
+          type="button"
+          onClick={() => alterar(!estado.vigente)}
+          disabled={salvando}
+          className={`mt-3 rounded-lg px-3 py-2 text-sm font-medium transition disabled:opacity-50 ${
+            estado.vigente
+              ? "border border-mod-financa/40 text-mod-financa hover:bg-mod-financa/10"
+              : "bg-royal-500 text-white hover:bg-royal-600"
+          }`}
+        >
+          {salvando
+            ? "Salvando…"
+            : estado.vigente
+              ? "Revogar consentimento"
+              : "Autorizar IA"}
+        </button>
+      )}
+    </Card>
+  );
+}
 
 function DadosPessoais({
   perfil,
@@ -288,10 +410,7 @@ function TrocarSenha() {
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error ?? "Erro ao trocar senha.");
-      setMsg({ tipo: "ok", texto: "Senha atualizada." });
-      setNova("");
-      setConfirma("");
-      setSenha("");
+      await signOut({ callbackUrl: "/login" });
     } catch (e) {
       setMsg({ tipo: "erro", texto: e instanceof Error ? e.message : "Erro." });
     } finally {

@@ -1,156 +1,158 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import bcrypt from "bcryptjs";
-import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/app/generated/prisma/client";
+import { prisma } from "@/lib/prisma";
+import { ApiError, okJson, secureRoute } from "@/lib/security/errors";
+import { limitByUser, RATE_LIMITS } from "@/lib/security/rateLimit";
+import { assertOnlyKeys, parseJsonObject } from "@/lib/security/request";
+import { requireCurrentUser } from "@/lib/security/session";
+import {
+  civilDateToLegacyDate,
+  legacyDateToCivil,
+  parseBirthDateCivil,
+  parseCurrentPassword,
+  parseEmail,
+  parseNewPassword,
+  parseRequiredText,
+} from "@/lib/security/validation";
 
-// Perfil da própria conta. GET devolve os dados; PATCH edita.
-// Trocas sensíveis (e-mail e senha) exigem a senha atual (re-autenticação).
+const MAX_PROFILE_BODY = 8 * 1_024;
+
+const PROFILE_SELECT = {
+  name: true,
+  email: true,
+  birthDate: true,
+  birthDateCivil: true,
+  plan: true,
+  aiProvider: true,
+  createdAt: true,
+} as const;
+
+function perfilPublico(user: {
+  name: string;
+  email: string;
+  birthDate: Date | null;
+  birthDateCivil: string | null;
+  plan: string;
+  aiProvider: string;
+  createdAt: Date;
+}) {
+  return {
+    name: user.name,
+    email: user.email,
+    birthDate: user.birthDateCivil ?? legacyDateToCivil(user.birthDate),
+    plan: user.plan,
+    aiProvider: user.aiProvider,
+    createdAt: user.createdAt,
+  };
+}
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      name: true,
-      email: true,
-      birthDate: true,
-      plan: true,
-      aiProvider: true,
-      createdAt: true,
-    },
+  return secureRoute("profile:read", async () => {
+    const current = await requireCurrentUser(RATE_LIMITS.profileRead);
+    const user = await prisma.user.findUnique({
+      where: { id: current.id },
+      select: PROFILE_SELECT,
+    });
+    if (!user) {
+      throw new ApiError(401, "UNAUTHENTICATED", "Não autenticado.");
+    }
+    return okJson({ perfil: perfilPublico(user) });
   });
-  if (!user) {
-    return NextResponse.json({ error: "Conta não encontrada." }, { status: 404 });
-  }
-  return NextResponse.json({ perfil: user });
 }
 
 export async function PATCH(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-  }
+  return secureRoute("profile:update", async () => {
+    const current = await requireCurrentUser(RATE_LIMITS.profileWrite);
+    const body = await parseJsonObject(req, MAX_PROFILE_BODY);
+    assertOnlyKeys(body, [
+      "name",
+      "birthDate",
+      "email",
+      "novaSenha",
+      "senhaAtual",
+    ]);
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Corpo inválido." }, { status: 400 });
-  }
-
-  const { name, birthDate, email, novaSenha, senhaAtual } = (body ?? {}) as {
-    name?: string;
-    birthDate?: string | null;
-    email?: string;
-    novaSenha?: string;
-    senhaAtual?: string;
-  };
-
-  const emailLimpo = typeof email === "string" ? email.trim().toLowerCase() : "";
-  const querTrocarEmail = emailLimpo.length > 0;
-  const querTrocarSenha = typeof novaSenha === "string" && novaSenha.length > 0;
-
-  const data: Prisma.UserUpdateInput = {};
-
-  // Nome (livre, sem senha)
-  if (typeof name === "string") {
-    const nomeLimpo = name.trim();
-    if (!nomeLimpo) {
-      return NextResponse.json({ error: "O nome não pode ficar vazio." }, { status: 400 });
+    const data: Prisma.UserUpdateInput = {};
+    if (body.name !== undefined) {
+      data.name = parseRequiredText(body.name, { label: "Nome", max: 100 });
     }
-    data.name = nomeLimpo;
-  }
 
-  // Data de nascimento (livre, sem senha)
-  if (birthDate !== undefined) {
-    if (birthDate === null || birthDate === "") {
-      data.birthDate = null;
-    } else {
-      const d = new Date(birthDate);
-      if (Number.isNaN(d.getTime())) {
-        return NextResponse.json({ error: "Data de nascimento inválida." }, { status: 400 });
+    if (body.birthDate !== undefined) {
+      if (body.birthDate === null || body.birthDate === "") {
+        data.birthDateCivil = null;
+        data.birthDate = null;
+      } else {
+        const civil = parseBirthDateCivil(body.birthDate);
+        data.birthDateCivil = civil;
+        data.birthDate = civilDateToLegacyDate(civil);
       }
-      data.birthDate = d;
-    }
-  }
-
-  // Trocas sensíveis exigem a senha atual
-  if (querTrocarEmail || querTrocarSenha) {
-    if (!senhaAtual) {
-      return NextResponse.json(
-        { error: "Confirme sua senha atual para alterar e-mail ou senha." },
-        { status: 400 },
-      );
-    }
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { passwordHash: true },
-    });
-    if (!user) {
-      return NextResponse.json({ error: "Conta não encontrada." }, { status: 404 });
-    }
-    const ok = await bcrypt.compare(senhaAtual, user.passwordHash);
-    if (!ok) {
-      return NextResponse.json({ error: "Senha atual incorreta." }, { status: 403 });
     }
 
-    if (querTrocarEmail) {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLimpo)) {
-        return NextResponse.json({ error: "E-mail inválido." }, { status: 400 });
-      }
-      const existente = await prisma.user.findUnique({
-        where: { email: emailLimpo },
-        select: { id: true },
+    const querTrocarEmail = body.email !== undefined;
+    const querTrocarSenha =
+      body.novaSenha !== undefined && body.novaSenha !== "";
+    const novoEmail = querTrocarEmail ? parseEmail(body.email) : undefined;
+    const novaSenha = querTrocarSenha
+      ? parseNewPassword(body.novaSenha)
+      : undefined;
+
+    if (querTrocarEmail || querTrocarSenha) {
+      await limitByUser(current.id, RATE_LIMITS.sensitiveAccount);
+      const senhaAtual = parseCurrentPassword(body.senhaAtual);
+      const user = await prisma.user.findUnique({
+        where: { id: current.id },
+        select: { passwordHash: true },
       });
-      if (existente && existente.id !== session.user.id) {
-        return NextResponse.json(
-          { error: "Já existe uma conta com esse e-mail." },
-          { status: 409 },
-        );
+      if (!user) {
+        throw new ApiError(401, "UNAUTHENTICATED", "Não autenticado.");
       }
-      data.email = emailLimpo;
+      if (!(await bcrypt.compare(senhaAtual, user.passwordHash))) {
+        throw new ApiError(403, "INVALID_CURRENT_PASSWORD", "Senha atual incorreta.");
+      }
+
+      if (novoEmail !== undefined) data.email = novoEmail;
+      if (novaSenha !== undefined) {
+        if (await bcrypt.compare(novaSenha, user.passwordHash)) {
+          throw new ApiError(
+            400,
+            "PASSWORD_REUSE",
+            "Escolha uma senha diferente da atual.",
+          );
+        }
+        data.passwordHash = await bcrypt.hash(novaSenha, 12);
+        data.sessionVersion = { increment: 1 };
+      }
+    } else if (body.senhaAtual !== undefined) {
+      throw new ApiError(400, "UNEXPECTED_PASSWORD", "Nada para atualizar.");
     }
 
-    if (querTrocarSenha) {
-      if (novaSenha!.length < 6) {
-        return NextResponse.json(
-          { error: "A nova senha precisa ter ao menos 6 caracteres." },
-          { status: 400 },
+    if (Object.keys(data).length === 0) {
+      throw new ApiError(400, "NOTHING_TO_UPDATE", "Nada para atualizar.");
+    }
+
+    try {
+      const atualizado = await prisma.user.update({
+        where: { id: current.id },
+        data,
+        select: PROFILE_SELECT,
+      });
+      return okJson({
+        ok: true,
+        perfil: perfilPublico(atualizado),
+        sessionInvalidated: querTrocarSenha,
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        throw new ApiError(
+          409,
+          "EMAIL_ALREADY_EXISTS",
+          "Já existe uma conta com esse e-mail.",
         );
       }
-      data.passwordHash = await bcrypt.hash(novaSenha!, 10);
+      throw error;
     }
-  }
-
-  if (Object.keys(data).length === 0) {
-    return NextResponse.json({ error: "Nada para atualizar." }, { status: 400 });
-  }
-
-  try {
-    const atualizado = await prisma.user.update({
-      where: { id: session.user.id },
-      data,
-      select: {
-        name: true,
-        email: true,
-        birthDate: true,
-        plan: true,
-        aiProvider: true,
-        createdAt: true,
-      },
-    });
-    return NextResponse.json({ ok: true, perfil: atualizado });
-  } catch (err) {
-    console.error("[perfil] erro ao atualizar:", err);
-    return NextResponse.json(
-      { error: "Não foi possível salvar. Tente novamente." },
-      { status: 500 },
-    );
-  }
+  });
 }

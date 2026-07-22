@@ -1,12 +1,14 @@
-// Tipos do motor de processamento. O motor é AGNÓSTICO AO CANAL:
-// hoje é chamado pelo chat do app; amanhã pode ser um webhook do WhatsApp.
-// Nada aqui importa React/Next — só entrada -> IA -> persistência -> resultado.
-
 export type TipoEntry = "financa" | "tarefa" | "nota" | "habito" | "estudo";
 
+export type JsonPrimitivo = string | number | boolean | null;
+export type JsonValue = JsonPrimitivo | JsonObject | JsonValue[];
+export interface JsonObject {
+  [chave: string]: JsonValue;
+}
+
 export interface ImagemEntrada {
-  base64: string; // sem o prefixo "data:...;base64,"
-  mediaType: string; // ex.: "image/jpeg", "image/png", "image/webp"
+  base64: string;
+  mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 }
 
 export interface TurnoHistorico {
@@ -14,44 +16,75 @@ export interface TurnoHistorico {
   texto: string;
 }
 
-// Entrada do motor. `texto` e/ou `imagem` devem estar presentes.
 export interface EntradaMotor {
   userId: string;
   texto?: string;
   imagem?: ImagemEntrada;
-  // Continuidade para o fluxo "perguntar antes de salvar".
   historico?: TurnoHistorico[];
 }
 
-// Contrato JSON que o Claude deve devolver.
 export interface Categorizacao {
   tipo: TipoEntry;
-  confianca: number; // 0..1
+  confianca: number;
   categoria: string | null;
-  valor: number | null; // em reais, somente para "financa"
-  dados: Record<string, unknown>;
-  resposta: string; // confirmação curta em PT-BR
-  pergunta: string | null; // preenchido quando falta clareza
-  memorias: { fato: string; categoria: string | null }[];
+  valor: number | null;
+  dados: JsonObject;
+  resposta: string;
+  pergunta: string | null;
 }
 
-// Resultado devolvido a quem chamou o motor (UI, webhook, etc.).
+export interface PropostaEntrada {
+  tipo: TipoEntry;
+  confianca: number;
+  categoria: string | null;
+  valor: number | null;
+  dados: JsonObject;
+}
+
+export interface ContextoConfirmacaoIa {
+  provider: "gemini" | "groq" | "anthropic";
+  consentVersion: string;
+  purpose: string;
+}
+
+export interface ConfirmacaoEntrada {
+  userId: string;
+  proposta: PropostaEntrada;
+  token: string;
+}
+
 export type ResultadoMotor =
   | {
-      status: "salvo";
-      tipo: TipoEntry;
+      status: "confirmacao";
       resposta: string;
-      entryId: string;
-      categoria: string | null;
-      valor: number | null;
-      moduloCor: string;
+      proposta: PropostaEntrada;
+      token: string;
+      expiraEm: string;
     }
   | {
       status: "pergunta";
-      resposta: string; // texto curto que introduz a dúvida
-      pergunta: string; // o que o Gennys precisa saber
-    }
-  | {
-      status: "erro";
-      mensagem: string;
+      resposta: string;
+      pergunta: string;
     };
+
+export interface ResultadoConfirmacao {
+  status: "salvo";
+  tipo: TipoEntry;
+  resposta: string;
+  entryId: string;
+  categoria: string | null;
+  valor: number | null;
+  moduloCor: string;
+  idempotente: boolean;
+}
+
+export type ErroProcessamentoCodigo =
+  | "entrada_invalida"
+  | "consentimento_necessario"
+  | "cota_excedida"
+  | "provedor_indisponivel"
+  | "provedor_incompativel"
+  | "falha_provedor"
+  | "saida_invalida"
+  | "confirmacao_invalida"
+  | "erro_interno";

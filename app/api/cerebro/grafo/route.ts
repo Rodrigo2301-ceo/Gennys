@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ApiError, okJson, secureRoute } from "@/lib/security/errors";
+import { RATE_LIMITS } from "@/lib/security/rateLimit";
+import { requireCurrentUser } from "@/lib/security/session";
 import {
   CLASSES_GRAFO,
   classeDeEntry,
@@ -46,15 +46,22 @@ function tituloDeEntry(
 }
 
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-  }
-  const userId = session.user.id;
+  return secureRoute("brain:graph", async () => {
+    const current = await requireCurrentUser(RATE_LIMITS.dataRead);
+    const userId = current.id;
 
-  const { searchParams } = new URL(req.url);
-  const periodo = searchParams.get("periodo") ?? "mes";
-  const dias = periodo in DIAS_PERIODO ? DIAS_PERIODO[periodo] : 30;
+    const { searchParams } = new URL(req.url);
+    if (
+      searchParams.getAll("periodo").length > 1 ||
+      Array.from(searchParams.keys()).some((key) => key !== "periodo")
+    ) {
+      throw new ApiError(400, "INVALID_QUERY", "Parâmetros inválidos.");
+    }
+    const periodo = searchParams.get("periodo") ?? "mes";
+    if (!(periodo in DIAS_PERIODO)) {
+      throw new ApiError(400, "INVALID_PERIOD", "Período inválido.");
+    }
+    const dias = DIAS_PERIODO[periodo];
   const cutoff =
     dias === null ? undefined : new Date(Date.now() - dias * 86400_000);
   const filtroData = cutoff ? { createdAt: { gte: cutoff } } : {};
@@ -177,11 +184,12 @@ export async function GET(req: Request) {
 
   const total = cEntry + cMem + cMarca;
 
-  return NextResponse.json({
-    nodes: visiveis,
-    links,
-    total,
-    mostrando: visiveis.length,
-    limite: LIMITE,
+    return okJson({
+      nodes: visiveis,
+      links,
+      total,
+      mostrando: visiveis.length,
+      limite: LIMITE,
+    });
   });
 }

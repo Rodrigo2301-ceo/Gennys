@@ -1,74 +1,80 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ApiError, okJson, secureRoute } from "@/lib/security/errors";
+import { RATE_LIMITS } from "@/lib/security/rateLimit";
+import {
+  assertOnlyKeys,
+  assertTrustedMutation,
+  parseJsonObject,
+} from "@/lib/security/request";
+import { requireCurrentUser } from "@/lib/security/session";
+import {
+  parseId,
+  parseOptionalNullableText,
+  parseRequiredText,
+} from "@/lib/security/validation";
 
 export async function PATCH(
   req: Request,
   { params }: { params: { id: string } },
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-  }
+  return secureRoute("memories:update", async () => {
+    const current = await requireCurrentUser(RATE_LIMITS.dataWrite);
+    const id = parseId(params.id, "Memória");
+    const body = await parseJsonObject(req, 8 * 1_024);
+    assertOnlyKeys(body, ["fato", "categoria"]);
 
-  const memory = await prisma.memory.findFirst({
-    where: { id: params.id, userId: session.user.id },
+    const data: { fato?: string; categoria?: string | null } = {};
+    if (body.fato !== undefined) {
+      data.fato = parseRequiredText(body.fato, { label: "Fato", max: 1_000 });
+    }
+    if (body.categoria !== undefined) {
+      data.categoria = parseOptionalNullableText(body.categoria, {
+        label: "Categoria",
+        max: 80,
+      });
+    }
+    if (Object.keys(data).length === 0) {
+      throw new ApiError(400, "NOTHING_TO_UPDATE", "Nada para atualizar.");
+    }
+
+    const memory = await prisma.memory.findFirst({
+      where: { id, userId: current.id },
+      select: { id: true },
+    });
+    if (!memory) {
+      throw new ApiError(404, "MEMORY_NOT_FOUND", "Memória não encontrada.");
+    }
+
+    const atualizado = await prisma.memory.update({
+      where: { id: memory.id },
+      data,
+      select: {
+        id: true,
+        fato: true,
+        categoria: true,
+        createdAt: true,
+      },
+    });
+    return okJson({ memory: atualizado });
   });
-  if (!memory) {
-    return NextResponse.json(
-      { error: "Memória não encontrada." },
-      { status: 404 },
-    );
-  }
-
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Corpo inválido." }, { status: 400 });
-  }
-  const { fato, categoria } = (body ?? {}) as {
-    fato?: string;
-    categoria?: string | null;
-  };
-  if (fato !== undefined && !fato.trim()) {
-    return NextResponse.json(
-      { error: "O fato não pode ficar vazio." },
-      { status: 400 },
-    );
-  }
-
-  const atualizado = await prisma.memory.update({
-    where: { id: memory.id },
-    data: {
-      fato: fato !== undefined ? fato.trim() : undefined,
-      categoria: categoria !== undefined ? categoria : undefined,
-    },
-  });
-
-  return NextResponse.json({ memory: atualizado });
 }
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: { id: string } },
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-  }
-
-  const memory = await prisma.memory.findFirst({
-    where: { id: params.id, userId: session.user.id },
+  return secureRoute("memories:delete", async () => {
+    assertTrustedMutation(req);
+    const current = await requireCurrentUser(RATE_LIMITS.dataWrite);
+    const id = parseId(params.id, "Memória");
+    const memory = await prisma.memory.findFirst({
+      where: { id, userId: current.id },
+      select: { id: true },
+    });
+    if (!memory) {
+      throw new ApiError(404, "MEMORY_NOT_FOUND", "Memória não encontrada.");
+    }
+    await prisma.memory.delete({ where: { id: memory.id } });
+    return okJson({ ok: true });
   });
-  if (!memory) {
-    return NextResponse.json(
-      { error: "Memória não encontrada." },
-      { status: 404 },
-    );
-  }
-
-  await prisma.memory.delete({ where: { id: memory.id } });
-  return NextResponse.json({ ok: true });
 }

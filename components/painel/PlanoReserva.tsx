@@ -13,6 +13,11 @@ import {
   SecaoTitulo,
 } from "@/components/ui/base";
 import { Alvo } from "@/components/ui/icones";
+import {
+  deslocarMesCivil,
+  mesesAteMesCivil,
+  mesCivilSaoPaulo,
+} from "@/lib/finance/datas";
 
 const AMBER = CORES_MODULO.financa; // #f59e0b
 
@@ -25,11 +30,12 @@ interface PlanoDados {
   prazoMeses: number | null;
   dataAlvo: string | null;
   modo: Modo;
+  valorGuardado?: number;
 }
 
 interface DadosReserva {
   media: { receitaMedia: number; despesaMedia: number; mesesConsiderados: number };
-  resumo: { patrimonio: number } | null;
+  resumo: { saldoAcumulado?: number; patrimonio: number } | null;
   sugestaoValorMensal: number;
   sugestaoMetaEmergencia: number;
   mesesReservaEmergencia: number;
@@ -38,17 +44,11 @@ interface DadosReserva {
 
 // "YYYY-MM" do mês seguinte, como valor mínimo padrão do seletor de data-alvo.
 function proximoMesISO(): string {
-  const d = new Date();
-  d.setMonth(d.getMonth() + 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return deslocarMesCivil(mesCivilSaoPaulo(), 1);
 }
 
 function mesesAteISO(dataAlvo: string): number | null {
-  const [ano, mes] = dataAlvo.split("-").map(Number);
-  if (!ano || !mes) return null;
-  const hoje = new Date();
-  const meses = (ano - hoje.getFullYear()) * 12 + (mes - 1 - hoje.getMonth());
-  return meses > 0 ? meses : null;
+  return mesesAteMesCivil(dataAlvo);
 }
 
 export default function PlanoReserva({
@@ -63,6 +63,7 @@ export default function PlanoReserva({
   const [modo, setModo] = useState<Modo>("sugestao");
   const [valorManual, setValorManual] = useState("");
   const [dataAlvo, setDataAlvo] = useState("");
+  const [valorGuardado, setValorGuardado] = useState("0");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -76,7 +77,23 @@ export default function PlanoReserva({
       .then((r) => r.json())
       .then((d) => {
         setDados(d);
-        if (!d.plano) setEditando(true);
+        const planoRecebido = d.plano?.dados as PlanoDados | undefined;
+        if (!planoRecebido) {
+          setEditando(true);
+          return;
+        }
+        setObjetivo(planoRecebido.objetivo ?? "");
+        setMetaValor(
+          planoRecebido.metaValor ? String(planoRecebido.metaValor) : "",
+        );
+        setModo(planoRecebido.modo ?? "sugestao");
+        setValorManual(
+          planoRecebido.modo === "manual"
+            ? String(planoRecebido.valorMensal ?? "")
+            : "",
+        );
+        setDataAlvo(planoRecebido.dataAlvo ?? "");
+        setValorGuardado(String(Math.max(0, planoRecebido.valorGuardado ?? 0)));
       });
   }
 
@@ -101,6 +118,7 @@ export default function PlanoReserva({
           modo,
           valorManual: valorManual ? Number(valorManual) : undefined,
           dataAlvo: dataAlvo || undefined,
+          valorGuardado: valorGuardado ? Number(valorGuardado) : 0,
         }),
       });
       if (!res.ok) {
@@ -130,10 +148,9 @@ export default function PlanoReserva({
       }
       const data = await res.json();
       return data.resposta as string;
-    } catch (e) {
-      console.error(`[reserva/perguntar] tentativa ${tentativa} falhou:`, e);
+    } catch {
       if (tentativa === 1) return chamarPergunta(texto, 2);
-      throw e;
+      throw new Error("ASSISTENTE_INDISPONIVEL");
     }
   }
 
@@ -165,9 +182,12 @@ export default function PlanoReserva({
 
   // Preview do valor mensal no modo "prazo" (meta ÷ meses até a data).
   const metaNum = metaValor ? Number(metaValor) : 0;
+  const guardadoNum = Math.max(0, Number(valorGuardado) || 0);
   const mesesPrazo = dataAlvo ? mesesAteISO(dataAlvo) : null;
   const mensalPrazo =
-    metaNum > 0 && mesesPrazo ? Math.ceil(metaNum / mesesPrazo / 10) * 10 : 0;
+    metaNum > 0 && mesesPrazo
+      ? Math.ceil(Math.max(0, metaNum - guardadoNum) / mesesPrazo / 10) * 10
+      : 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -189,10 +209,10 @@ export default function PlanoReserva({
             </div>
             <p className="mt-1 truncate text-sm text-soft">{plano.objetivo}</p>
 
-            {/* Progresso rumo à meta (usa o patrimônio acumulado) */}
+            {/* Progresso usa somente o valor que o usuario confirmou como guardado. */}
             {plano.metaValor ? (
               (() => {
-                const acumulado = Math.max(0, dados.resumo?.patrimonio ?? 0);
+                const acumulado = Math.max(0, plano.valorGuardado ?? 0);
                 const progresso = Math.min(1, acumulado / plano.metaValor);
                 const falta = plano.metaValor - acumulado;
                 const projecao =
@@ -201,10 +221,15 @@ export default function PlanoReserva({
                     : 0;
                 return (
                   <div className="mt-3">
-                    <ProgressBar valor={progresso} cor={AMBER} />
+                    <ProgressBar
+                      valor={progresso}
+                      cor={AMBER}
+                      rotulo="Progresso da reserva"
+                      textoValor={`${Math.round(progresso * 100)}% da meta guardada`}
+                    />
                     <div className="mt-1.5 flex items-center justify-between text-xs">
                       <span className="font-mono text-soft">
-                        {formatarReais(acumulado)} de{" "}
+                        {formatarReais(acumulado)} guardados de{" "}
                         {formatarReais(plano.metaValor)}
                       </span>
                       <span className="font-mono font-medium text-mod-financa">
@@ -267,12 +292,27 @@ export default function PlanoReserva({
           <div className="mt-3 flex flex-col gap-2.5">
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-soft">Objetivo (reserva ou meta)</span>
-              <input
+                <input
                 value={objetivo}
                 onChange={(e) => setObjetivo(e.target.value)}
                 placeholder="Ex.: reserva, viagem, moto"
                 className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-royal-500"
               />
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-soft">Quanto ja esta guardado (R$)</span>
+              <input
+                value={valorGuardado}
+                onChange={(e) => setValorGuardado(e.target.value)}
+                placeholder="Ex.: 500"
+                inputMode="decimal"
+                min="0"
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-mono tabular-nums outline-none focus:border-royal-500"
+              />
+              <span className="text-xs text-muted">
+                Informe apenas o que esta separado para esta meta; o saldo da conta nao e usado.
+              </span>
             </label>
 
             {/* Como chegar lá: sugestão / por prazo / valor fixo */}
@@ -356,13 +396,16 @@ export default function PlanoReserva({
 
             {/* Valor fixo */}
             {modo === "manual" && (
-              <input
-                value={valorManual}
-                onChange={(e) => setValorManual(e.target.value)}
-                placeholder="Quanto guardar por mês (R$)"
-                inputMode="decimal"
-                className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-mono tabular-nums outline-none focus:border-royal-500"
-              />
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-soft">Quanto guardar por mes (R$)</span>
+                <input
+                  value={valorManual}
+                  onChange={(e) => setValorManual(e.target.value)}
+                  placeholder="Ex.: 300"
+                  inputMode="decimal"
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-mono tabular-nums outline-none focus:border-royal-500"
+                />
+              </label>
             )}
 
             {/* Meta em R$ com racional explícito */}
@@ -392,7 +435,11 @@ export default function PlanoReserva({
               )}
             </label>
 
-            {erro && <p className="text-xs text-mod-financa">{erro}</p>}
+            {erro && (
+              <p className="text-xs text-mod-financa" role="alert">
+                {erro}
+              </p>
+            )}
 
             <button
               type="button"
@@ -409,32 +456,41 @@ export default function PlanoReserva({
       {/* Pergunta livre (mantém a regra anti-investimento do motor) */}
       <Card>
         <Eyebrow>Pergunte ao Gennys</Eyebrow>
-        <p className="mt-1 text-sm text-soft">
+        <p className="mt-1 text-sm text-soft" id="reserva-pergunta-ajuda">
           Ex.: &quot;onde invisto esse dinheiro?&quot;
         </p>
         <div className="mt-2 flex gap-2">
-          <input
-            value={pergunta}
-            onChange={(e) => setPergunta(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && perguntar()}
-            disabled={perguntando}
-            className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-royal-500 disabled:opacity-60"
-            placeholder="Sua pergunta…"
-          />
+          <label className="min-w-0 flex-1">
+            <span className="sr-only">Pergunta sobre a reserva</span>
+            <input
+              value={pergunta}
+              onChange={(e) => setPergunta(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && perguntar()}
+              disabled={perguntando}
+              aria-describedby="reserva-pergunta-ajuda"
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-royal-500 disabled:opacity-60"
+              placeholder="Sua pergunta…"
+            />
+          </label>
           <Botao onClick={perguntar} disabled={perguntando}>
             {perguntando ? "…" : "Perguntar"}
           </Botao>
         </div>
 
         {perguntando && (
-          <div className="mt-2 space-y-1.5" aria-hidden>
-            <div className="h-3 w-full animate-pulse rounded bg-white/10" />
-            <div className="h-3 w-2/3 animate-pulse rounded bg-white/10" />
-          </div>
+          <>
+            <span className="sr-only" role="status">
+              Preparando resposta.
+            </span>
+            <div className="mt-2 space-y-1.5" aria-hidden>
+              <div className="h-3 w-full animate-pulse rounded bg-white/10" />
+              <div className="h-3 w-2/3 animate-pulse rounded bg-white/10" />
+            </div>
+          </>
         )}
 
         {!perguntando && resposta && (
-          <div className="mt-2 rounded-lg bg-white/5 p-2.5">
+            <div className="mt-2 rounded-lg bg-white/5 p-2.5" role="status" aria-live="polite">
             <p className="text-sm text-foreground">{resposta}</p>
             {erroPergunta && (
               <button
@@ -465,6 +521,7 @@ function ModoBtn({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={ativo}
       className={`rounded-lg border px-2 py-2 text-center text-xs font-medium transition ${
         ativo
           ? "border-mod-financa bg-mod-financa/15 text-foreground"

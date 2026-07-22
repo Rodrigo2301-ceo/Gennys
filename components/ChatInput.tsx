@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 export interface ImagemSelecionada {
   base64: string;
@@ -20,7 +20,7 @@ interface SpeechRecognitionLike {
   stop(): void;
   onresult: ((e: unknown) => void) | null;
   onend: (() => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((evento: { error?: string }) => void) | null;
 }
 
 export default function ChatInput({
@@ -37,9 +37,12 @@ export default function ChatInput({
   const [texto, setTexto] = useState("");
   const [imagem, setImagem] = useState<ImagemSelecionada | null>(null);
   const [ouvindo, setOuvindo] = useState(false);
+  const [erroVoz, setErroVoz] = useState<string | null>(null);
   const [suportaVoz, setSuportaVoz] = useState(false);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const campoId = useId();
+  const statusVozId = useId();
 
   useEffect(() => {
     const w = window as unknown as {
@@ -61,10 +64,29 @@ export default function ChatInput({
           .map((_, i) => ev.results[i][0].transcript)
           .join(" ");
         setTexto((t) => (t ? `${t} ${fala}` : fala).trim());
+        setErroVoz(null);
       };
       rec.onend = () => setOuvindo(false);
-      rec.onerror = () => setOuvindo(false);
+      rec.onerror = (evento) => {
+        setOuvindo(false);
+        setErroVoz(
+          evento.error === "not-allowed" || evento.error === "service-not-allowed"
+            ? "Permita o uso do microfone para ditar sua mensagem."
+            : "Nao foi possivel ouvir agora. Tente novamente.",
+        );
+      };
       recRef.current = rec;
+      return () => {
+        rec.onresult = null;
+        rec.onend = null;
+        rec.onerror = null;
+        try {
+          rec.stop();
+        } catch {
+          // O navegador pode rejeitar stop() quando o reconhecimento ja terminou.
+        }
+        recRef.current = null;
+      };
     }
   }, []);
 
@@ -80,10 +102,12 @@ export default function ChatInput({
       setOuvindo(false);
     } else {
       try {
+        setErroVoz(null);
         rec.start();
         setOuvindo(true);
       } catch {
         setOuvindo(false);
+        setErroVoz("Nao foi possivel iniciar o microfone.");
       }
     }
   }
@@ -166,6 +190,7 @@ export default function ChatInput({
             onClick={alternarVoz}
             disabled={enviando}
             ativo={ouvindo}
+            pressed={ouvindo}
           >
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8">
               <rect x="9" y="3" width="6" height="11" rx="3" />
@@ -174,12 +199,17 @@ export default function ChatInput({
           </IconeBotao>
         )}
 
+        <label htmlFor={campoId} className="sr-only">
+          Mensagem para o Gennys
+        </label>
         <input
+          id={campoId}
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder="Fala comigo…"
           disabled={enviando}
+          aria-describedby={suportaVoz ? statusVozId : undefined}
           className="min-w-0 flex-1 bg-transparent px-1 py-1.5 text-white placeholder:text-white/50 outline-none"
         />
 
@@ -203,6 +233,16 @@ export default function ChatInput({
           onChange={escolherImagem}
         />
       </div>
+      {suportaVoz && (
+        <p
+          id={statusVozId}
+          className={erroVoz ? "mt-1.5 text-xs text-mod-financa" : "sr-only"}
+          role={erroVoz ? "alert" : "status"}
+          aria-live="polite"
+        >
+          {erroVoz ?? (ouvindo ? "Microfone ativo. Fale agora." : "Microfone parado.")}
+        </p>
+      )}
     </div>
   );
 }
@@ -213,18 +253,21 @@ function IconeBotao({
   onClick,
   disabled,
   ativo,
+  pressed,
 }: {
   children: React.ReactNode;
   titulo: string;
   onClick: () => void;
   disabled?: boolean;
   ativo?: boolean;
+  pressed?: boolean;
 }) {
   return (
     <button
       type="button"
       title={titulo}
       aria-label={titulo}
+      aria-pressed={pressed}
       onClick={onClick}
       disabled={disabled}
       className={`grid h-9 w-9 shrink-0 place-items-center rounded-full transition duration-200 disabled:opacity-40 ${

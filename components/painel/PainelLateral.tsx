@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import AbaFinanceiro from "./AbaFinanceiro";
 import AbaProdutividade from "./AbaProdutividade";
 import AbaEstudos from "./AbaEstudos";
@@ -35,6 +35,51 @@ export default function PainelLateral({
   onFechar: () => void;
 }) {
   const [aba, setAba] = useState<AbaId>("financeiro");
+  const painelRef = useRef<HTMLElement>(null);
+  const focoAnteriorRef = useRef<HTMLElement | null>(null);
+  const fecharRef = useRef(onFechar);
+
+  useEffect(() => {
+    fecharRef.current = onFechar;
+  }, [onFechar]);
+
+  useEffect(() => {
+    const painel = painelRef.current;
+    if (!painel) return;
+    painel.inert = !aberto;
+    if (!aberto) return;
+
+    focoAnteriorRef.current = document.activeElement as HTMLElement | null;
+    const seletor =
+      'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const focaveis = () => Array.from(painel.querySelectorAll<HTMLElement>(seletor));
+    focaveis()[0]?.focus();
+
+    function aoTeclar(evento: KeyboardEvent) {
+      if (evento.key === "Escape") {
+        fecharRef.current();
+        return;
+      }
+      if (evento.key !== "Tab") return;
+      const itens = focaveis();
+      if (itens.length === 0) return;
+      const primeiro = itens[0];
+      const ultimo = itens[itens.length - 1];
+      if (evento.shiftKey && document.activeElement === primeiro) {
+        evento.preventDefault();
+        ultimo.focus();
+      } else if (!evento.shiftKey && document.activeElement === ultimo) {
+        evento.preventDefault();
+        primeiro.focus();
+      }
+    }
+
+    document.addEventListener("keydown", aoTeclar);
+    return () => {
+      document.removeEventListener("keydown", aoTeclar);
+      focoAnteriorRef.current?.focus();
+    };
+  }, [aberto]);
 
   return (
     <>
@@ -49,6 +94,10 @@ export default function PainelLateral({
 
       {/* Painel deslizante */}
       <aside
+        ref={painelRef}
+        role="dialog"
+        aria-modal={aberto}
+        aria-label="Painel do Gennys"
         className={`fixed inset-y-0 left-0 z-50 flex w-full max-w-sm flex-col border-r border-white/10 bg-royal-800/95 backdrop-blur-xl transition-transform duration-300 ${
           aberto ? "translate-x-0" : "-translate-x-full"
         }`}

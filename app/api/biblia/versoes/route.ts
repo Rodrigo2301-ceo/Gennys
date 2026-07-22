@@ -1,19 +1,18 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ApiError, okJson, secureRoute } from "@/lib/security/errors";
+import { RATE_LIMITS } from "@/lib/security/rateLimit";
+import { requireCurrentUser } from "@/lib/security/session";
 
-// Lista as traduções disponíveis (seletor de versão).
-export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-  }
-
-  const versoes = await prisma.bibleTranslation.findMany({
-    select: { code: true, name: true, year: true },
-    orderBy: { name: "asc" },
+export async function GET(req: Request) {
+  return secureRoute("bible:translations", async () => {
+    await requireCurrentUser(RATE_LIMITS.bibleRead);
+    if (Array.from(new URL(req.url).searchParams.keys()).length > 0) {
+      throw new ApiError(400, "INVALID_QUERY", "Parâmetros inválidos.");
+    }
+    const versoes = await prisma.bibleTranslation.findMany({
+      select: { code: true, name: true, year: true },
+      orderBy: { name: "asc" },
+    });
+    return okJson({ versoes });
   });
-
-  return NextResponse.json({ versoes });
 }

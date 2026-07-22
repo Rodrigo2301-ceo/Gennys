@@ -8,6 +8,7 @@ import { cores } from "@/lib/theme";
 const AMBER = cores.financa;
 
 interface Resumo {
+  saldoAcumulado?: number;
   patrimonio: number;
   receitaMes: number;
   despesaMes: number;
@@ -28,7 +29,10 @@ export default function ResumoPatrimonio() {
   if (!resumo) {
     return (
       <Card>
-        <div className="h-16 animate-pulse rounded bg-white/5" />
+        <span className="sr-only" role="status">
+          Carregando resumo financeiro.
+        </span>
+        <div className="h-16 animate-pulse rounded bg-white/5" aria-hidden />
       </Card>
     );
   }
@@ -37,9 +41,11 @@ export default function ResumoPatrimonio() {
 
   return (
     <Card accent={AMBER} glow>
-      <Eyebrow cor={AMBER}>Meu patrimônio</Eyebrow>
+      <Eyebrow cor={AMBER}>Saldo acumulado</Eyebrow>
       <div className="mt-1.5 flex items-end gap-2">
-        <HeroNumero cor={AMBER}>{formatarReais(resumo.patrimonio)}</HeroNumero>
+        <HeroNumero cor={AMBER}>
+          {formatarReais(resumo.saldoAcumulado ?? resumo.patrimonio)}
+        </HeroNumero>
         <span className="mb-1 text-xs text-muted">acumulado</span>
       </div>
 

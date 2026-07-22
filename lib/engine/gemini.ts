@@ -1,21 +1,29 @@
-// Provedor Gemini (Google). Chamado via REST direto (sem SDK) — evita
-// dependência extra pra uma integração simples de texto+imagem.
-
 import type { Categorizacao, ImagemEntrada, TurnoHistorico } from "./types";
 import { extrairJSON, normalizarCategorizacao } from "./parseCategorizacao";
+import { ProvedorIaError } from "./errors";
+import {
+  converterErroProvedor,
+  lerCorpoProvedorLimitado,
+  sinalTimeoutProvedor,
+  validarRespostaTexto,
+} from "./providerRuntime";
 
-const MODELO = process.env.GEMINI_MODEL || "gemini-flash-latest";
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODELO}:generateContent`;
-
-function getApiKey(): string {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error("GEMINI_API_KEY não configurada no ambiente.");
-  return key;
-}
+const MODELO = process.env.GEMINI_MODEL?.trim() || "gemini-flash-latest";
+const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODELO)}:generateContent`;
 
 interface GeminiPart {
   text?: string;
   inlineData?: { mimeType: string; data: string };
+}
+
+interface GeminiResponse {
+  candidates?: Array<{ content?: { parts?: GeminiPart[] } }>;
+}
+
+function getApiKey(): string {
+  const key = process.env.GEMINI_API_KEY?.trim();
+  if (!key) throw new ProvedorIaError("provedor_indisponivel");
+  return key;
 }
 
 async function chamarGemini(params: {
@@ -23,30 +31,42 @@ async function chamarGemini(params: {
   contents: { role: "user" | "model"; parts: GeminiPart[] }[];
   maxOutputTokens: number;
 }): Promise<string> {
-  const res = await fetch(`${ENDPOINT}?key=${getApiKey()}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: params.systemPrompt }] },
-      contents: params.contents,
-      generationConfig: {
-        maxOutputTokens: params.maxOutputTokens,
-        // Modelos 2.5+ "pensam" antes de responder e isso consome os tokens de
-        // saída. Categorização/respostas curtas não precisam disso.
-        thinkingConfig: { thinkingBudget: 0 },
+  const signal = sinalTimeoutProvedor();
+  let res: Response;
+  try {
+    res = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": getApiKey(),
       },
-    }),
-  });
-
-  if (!res.ok) {
-    const corpo = await res.text().catch(() => "");
-    throw new Error(`Gemini respondeu ${res.status}: ${corpo.slice(0, 300)}`);
+      signal,
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: params.systemPrompt }] },
+        contents: params.contents,
+        generationConfig: {
+          maxOutputTokens: params.maxOutputTokens,
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      }),
+    });
+  } catch (erro) {
+    throw converterErroProvedor(erro, signal);
   }
 
-  const data = await res.json();
-  const partes = data?.candidates?.[0]?.content?.parts ?? [];
-  return partes
-    .map((p: GeminiPart) => p.text ?? "")
+  if (!res.ok) {
+    await res.body?.cancel().catch(() => undefined);
+    throw new ProvedorIaError("falha_provedor");
+  }
+
+  let data: GeminiResponse;
+  try {
+    data = JSON.parse(await lerCorpoProvedorLimitado(res)) as GeminiResponse;
+  } catch (erro) {
+    throw converterErroProvedor(erro);
+  }
+  return (data.candidates?.[0]?.content?.parts ?? [])
+    .map((parte) => (typeof parte.text === "string" ? parte.text : ""))
     .join("")
     .trim();
 }
@@ -58,26 +78,18 @@ export async function categorizar(params: {
   imagem?: ImagemEntrada;
 }): Promise<Categorizacao> {
   const { systemPrompt, historico = [], texto, imagem } = params;
-
   const contents: { role: "user" | "model"; parts: GeminiPart[] }[] =
-    historico.map((t) => ({
-      role: t.autor === "usuario" ? "user" : "model",
-      parts: [{ text: t.texto }],
+    historico.map((turno) => ({
+      role: turno.autor === "usuario" ? "user" : "model",
+      parts: [{ text: turno.texto }],
     }));
-
   const partesAtuais: GeminiPart[] = [];
   if (imagem) {
     partesAtuais.push({
       inlineData: { mimeType: imagem.mediaType, data: imagem.base64 },
     });
-    partesAtuais.push({
-      text:
-        texto?.trim() ||
-        "Esta é uma foto de uma nota fiscal ou cupom. Extraia os dados financeiros.",
-    });
-  } else {
-    partesAtuais.push({ text: texto?.trim() || "" });
   }
+  if (texto) partesAtuais.push({ text: texto });
   contents.push({ role: "user", parts: partesAtuais });
 
   const textoResposta = await chamarGemini({
@@ -85,7 +97,6 @@ export async function categorizar(params: {
     contents,
     maxOutputTokens: 1024,
   });
-
   return normalizarCategorizacao(extrairJSON(textoResposta));
 }
 
@@ -93,9 +104,11 @@ export async function responderTexto(params: {
   systemPrompt: string;
   pergunta: string;
 }): Promise<string> {
-  return chamarGemini({
-    systemPrompt: params.systemPrompt,
-    contents: [{ role: "user", parts: [{ text: params.pergunta }] }],
-    maxOutputTokens: 300,
-  });
+  return validarRespostaTexto(
+    await chamarGemini({
+      systemPrompt: params.systemPrompt,
+      contents: [{ role: "user", parts: [{ text: params.pergunta }] }],
+      maxOutputTokens: 300,
+    }),
+  );
 }

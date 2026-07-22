@@ -8,19 +8,24 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  passwordHash  String
-  name          String
-  birthDate     DateTime?
-  plan          String    @default("free")
-  aiProvider    String    @default("gemini") // "gemini" | "grok" | "anthropic"
-  createdAt     DateTime  @default(now())
+  id             String    @id @default(cuid())
+  email          String    @unique
+  passwordHash   String
+  name           String
+  birthDate      DateTime? // legado: mantido durante a transicao de deploy
+  birthDateCivil String? // "YYYY-MM-DD", sem fuso horario
+  plan           String    @default("free")
+  aiProvider     String    @default("gemini") // "gemini" | "groq" | "anthropic"
+  sessionVersion Int       @default(0) // invalida JWTs apos troca de senha
+  createdAt      DateTime  @default(now())
 
-  entries    Entry[]
-  memories   Memory[]
-  verseMarks VerseMark[]
-  iaUsos     IaUsage[]
+  entries         Entry[]
+  memories        Memory[]
+  verseMarks      VerseMark[]
+  iaUsos          IaUsage[]
+  aiConsents      AiConsent[]
+  aiConfirmations AiConfirmation[]
+  reservationPlan ReservationPlan?
 }
 
 // Contagem de interações com a IA por usuário/dia. Só MEDE (prepara o limite
@@ -39,27 +44,92 @@ model IaUsage {
 }
 
 model Entry {
-  id         String   @id @default(cuid())
-  userId     String
-  tipo       String   // "financa" | "tarefa" | "nota" | "habito" | "estudo"
-  dados      Json
-  valor      Decimal?
-  categoria  String?
-  locked     Boolean  @default(false)
-  createdAt  DateTime @default(now())
+  id                String    @id @default(cuid())
+  userId            String
+  tipo              String // "financa" | "tarefa" | "nota" | "habito" | "estudo"
+  dados             Json
+  valor             Decimal?
+  categoria         String?
+  locked            Boolean   @default(false)
+  recurring         Boolean   @default(false)
+  transactionDate   DateTime? @db.Date
+  referenceMonth    String? // "YYYY-MM"
+  recurrenceKey     String?   @unique // templateId:YYYY-MM; impede duplicacao concorrente
+  excludeFromTotals Boolean   @default(false) // duplicata legada preservada, fora dos calculos
+  createdAt         DateTime  @default(now())
 
   // Recorrência de despesa fixa: quando uma finança travada gera a cópia
   // do mês seguinte, a cópia aponta para o registro original (template).
   origemRecorrenteId String?
   mesReferencia      String? // "YYYY-MM" — mês que esta cópia representa
 
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  origem  Entry?  @relation("Recorrencia", fields: [origemRecorrenteId], references: [id], onDelete: SetNull)
-  geradas Entry[] @relation("Recorrencia")
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  origem         Entry?          @relation("Recorrencia", fields: [origemRecorrenteId], references: [id], onDelete: SetNull)
+  geradas        Entry[]         @relation("Recorrencia")
+  aiConfirmation AiConfirmation?
 
   @@index([userId, tipo])
   @@index([userId, createdAt])
+  @@index([userId, referenceMonth])
   @@index([origemRecorrenteId])
+}
+
+// Consentimento explicito e versionado para envio a um provedor externo de IA.
+// Registros sao append-only; revogacao preenche revokedAt.
+model AiConsent {
+  id        String    @id @default(cuid())
+  userId    String
+  provider  String
+  version   String
+  purpose   String    @default("assistente")
+  grantedAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, provider, version, revokedAt])
+}
+
+// Recibo hash-only de confirmacao. Garante que a mesma proposta nao crie duas
+// entradas quando o cliente repete a requisicao.
+model AiConfirmation {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   @unique
+  entryId    String?  @unique
+  expiresAt  DateTime
+  consumedAt DateTime @default(now())
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entry Entry? @relation(fields: [entryId], references: [id], onDelete: SetNull)
+
+  @@index([userId, consumedAt])
+}
+
+// Contador em janela fixa persistido no PostgreSQL. identifierHash nunca
+// contem IP, e-mail ou outro identificador bruto.
+model RateLimit {
+  id             String   @id @default(cuid())
+  identifierHash String
+  action         String
+  windowStart    DateTime
+  count          Int      @default(0)
+  expiresAt      DateTime
+
+  @@unique([identifierHash, action, windowStart])
+  @@index([expiresAt])
+}
+
+// Plano de reserva e singleton por usuario. Entradas legadas continuam
+// preservadas e sao migradas para esta tabela sem serem apagadas.
+model ReservationPlan {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  dados     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Memory {

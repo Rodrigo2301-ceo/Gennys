@@ -1,86 +1,64 @@
-import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/app/generated/prisma/client";
 import { PROVEDOR_PADRAO } from "@/lib/ai/providers";
+import { prisma } from "@/lib/prisma";
+import { ApiError, okJson, secureRoute } from "@/lib/security/errors";
+import { limitByIp, RATE_LIMITS } from "@/lib/security/rateLimit";
+import { assertOnlyKeys, parseJsonObject } from "@/lib/security/request";
+import {
+  civilDateToLegacyDate,
+  parseBirthDateCivil,
+  parseEmail,
+  parseNewPassword,
+  parseRequiredText,
+} from "@/lib/security/validation";
+
+const MAX_REGISTER_BODY = 8 * 1_024;
 
 export async function POST(req: Request) {
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Corpo inválido." }, { status: 400 });
-  }
+  return secureRoute("register:create", async () => {
+    await limitByIp(req.headers, RATE_LIMITS.register);
+    const body = await parseJsonObject(req, MAX_REGISTER_BODY);
+    assertOnlyKeys(body, ["nome", "email", "senha", "dataNascimento"]);
 
-  const { nome, email, senha, dataNascimento } = (body ?? {}) as {
-    nome?: string;
-    email?: string;
-    senha?: string;
-    dataNascimento?: string;
-  };
+    const nome = parseRequiredText(body.nome, { label: "Nome", max: 100 });
+    const email = parseEmail(body.email);
+    const senha = parseNewPassword(body.senha);
 
-  const nomeLimpo = nome?.trim();
-  const emailLimpo = email?.trim().toLowerCase();
-
-  if (!nomeLimpo || !emailLimpo || !senha) {
-    return NextResponse.json(
-      { error: "Nome, e-mail e senha são obrigatórios." },
-      { status: 400 },
-    );
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLimpo)) {
-    return NextResponse.json({ error: "E-mail inválido." }, { status: 400 });
-  }
-  if (senha.length < 6) {
-    return NextResponse.json(
-      { error: "A senha precisa ter ao menos 6 caracteres." },
-      { status: 400 },
-    );
-  }
-
-  let birthDate: Date | null = null;
-  if (dataNascimento) {
-    const d = new Date(dataNascimento);
-    if (Number.isNaN(d.getTime())) {
-      return NextResponse.json(
-        { error: "Data de nascimento inválida." },
-        { status: 400 },
-      );
-    }
-    birthDate = d;
-  }
-
-  try {
-    const existente = await prisma.user.findUnique({
-      where: { email: emailLimpo },
-      select: { id: true },
-    });
-    if (existente) {
-      return NextResponse.json(
-        { error: "Já existe uma conta com esse e-mail." },
-        { status: 409 },
-      );
+    let birthDateCivil: string | null = null;
+    if (body.dataNascimento !== undefined && body.dataNascimento !== "") {
+      birthDateCivil = parseBirthDateCivil(body.dataNascimento);
     }
 
-    const passwordHash = await bcrypt.hash(senha, 10);
+    try {
+      await prisma.user.create({
+        data: {
+          name: nome,
+          email,
+          passwordHash: await bcrypt.hash(senha, 12),
+          birthDateCivil,
+          birthDate: birthDateCivil
+            ? civilDateToLegacyDate(birthDateCivil)
+            : null,
+          aiProvider: PROVEDOR_PADRAO,
+          sessionVersion: 0,
+        },
+        select: { id: true },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        throw new ApiError(
+          409,
+          "EMAIL_ALREADY_EXISTS",
+          "Já existe uma conta com esse e-mail.",
+        );
+      }
+      throw error;
+    }
 
-    await prisma.user.create({
-      data: {
-        name: nomeLimpo,
-        email: emailLimpo,
-        passwordHash,
-        birthDate,
-        // Explícito: não depender do default do schema/client (que já ficou
-        // defasado como "anthropic" e quebrava a IA de contas novas).
-        aiProvider: PROVEDOR_PADRAO,
-      },
-    });
-
-    return NextResponse.json({ ok: true }, { status: 201 });
-  } catch (err) {
-    console.error("[register] erro ao criar conta:", err);
-    return NextResponse.json(
-      { error: "Não foi possível criar a conta. Tente novamente em instantes." },
-      { status: 500 },
-    );
-  }
+    return okJson({ ok: true }, 201);
+  });
 }

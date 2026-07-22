@@ -1,51 +1,55 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ApiError, okJson, secureRoute } from "@/lib/security/errors";
+import { RATE_LIMITS } from "@/lib/security/rateLimit";
+import { requireCurrentUser } from "@/lib/security/session";
+import { parseBoundedCode } from "@/lib/security/validation";
 
-// Lista os livros de uma tradução, com o número de capítulos de cada um.
-// Uma chamada só entrega toda a árvore de navegação (livro -> capítulo).
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-  }
+  return secureRoute("bible:books", async () => {
+    await requireCurrentUser(RATE_LIMITS.bibleRead);
+    const { searchParams } = new URL(req.url);
+    if (
+      searchParams.getAll("versao").length !== 1 ||
+      Array.from(searchParams.keys()).some((key) => key !== "versao")
+    ) {
+      throw new ApiError(400, "INVALID_QUERY", "Parâmetros inválidos.");
+    }
+    const versao = parseBoundedCode(searchParams.get("versao"), "Versão");
+    const traducao = await prisma.bibleTranslation.findUnique({
+      where: { code: versao },
+      select: { id: true },
+    });
+    if (!traducao) {
+      throw new ApiError(404, "TRANSLATION_NOT_FOUND", "Versão não encontrada.");
+    }
 
-  const { searchParams } = new URL(req.url);
-  const versao = searchParams.get("versao");
-  if (!versao) {
-    return NextResponse.json({ error: "Versão não informada." }, { status: 400 });
-  }
-
-  const traducao = await prisma.bibleTranslation.findUnique({
-    where: { code: versao },
-    select: { id: true },
+    const books = await prisma.bibleBook.findMany({
+      where: { translationId: traducao.id },
+      orderBy: { position: "asc" },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        abbrev: true,
+        testamento: true,
+      },
+    });
+    const counts = await prisma.bibleVerse.groupBy({
+      by: ["bookId"],
+      where: { bookId: { in: books.map((book) => book.id) } },
+      _max: { chapter: true },
+    });
+    const chapters = new Map(
+      counts.map((item) => [item.bookId, item._max.chapter ?? 0]),
+    );
+    return okJson({
+      livros: books.map((book) => ({
+        code: book.code,
+        name: book.name,
+        abbrev: book.abbrev,
+        testamento: book.testamento,
+        numCapitulos: chapters.get(book.id) ?? 0,
+      })),
+    });
   });
-  if (!traducao) {
-    return NextResponse.json({ error: "Versão não encontrada." }, { status: 404 });
-  }
-
-  const books = await prisma.bibleBook.findMany({
-    where: { translationId: traducao.id },
-    orderBy: { position: "asc" },
-    select: { id: true, code: true, name: true, abbrev: true, testamento: true },
-  });
-
-  // Nº de capítulos = maior número de capítulo do livro (capítulos são 1..N).
-  const counts = await prisma.bibleVerse.groupBy({
-    by: ["bookId"],
-    where: { bookId: { in: books.map((b) => b.id) } },
-    _max: { chapter: true },
-  });
-  const capsPorLivro = new Map(counts.map((c) => [c.bookId, c._max.chapter ?? 0]));
-
-  const livros = books.map((b) => ({
-    code: b.code,
-    name: b.name,
-    abbrev: b.abbrev,
-    testamento: b.testamento,
-    numCapitulos: capsPorLivro.get(b.id) ?? 0,
-  }));
-
-  return NextResponse.json({ livros });
 }

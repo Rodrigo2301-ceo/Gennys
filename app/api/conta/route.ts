@@ -1,81 +1,74 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
 import bcrypt from "bcryptjs";
-import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { ehProvedorValido } from "@/lib/ai/providers";
+import { prisma } from "@/lib/prisma";
+import { ApiError, okJson, secureRoute } from "@/lib/security/errors";
+import {
+  RATE_LIMITS,
+  userRateLimitHash,
+} from "@/lib/security/rateLimit";
+import { assertOnlyKeys, parseJsonObject } from "@/lib/security/request";
+import { requireCurrentUser } from "@/lib/security/session";
+import { parseCurrentPassword } from "@/lib/security/validation";
 
-// Troca do provedor de IA ("cérebro") escolhido pelo usuário.
 export async function PATCH(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-  }
+  return secureRoute("account:provider:update", async () => {
+    const current = await requireCurrentUser(RATE_LIMITS.profileWrite);
+    const body = await parseJsonObject(req, 4 * 1_024);
+    assertOnlyKeys(body, ["aiProvider"]);
+    if (!ehProvedorValido(body.aiProvider)) {
+      throw new ApiError(
+        400,
+        "INVALID_AI_PROVIDER",
+        "Provedor de IA inválido.",
+      );
+    }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Corpo inválido." }, { status: 400 });
-  }
-  const { aiProvider } = (body ?? {}) as { aiProvider?: unknown };
-  if (!ehProvedorValido(aiProvider)) {
-    return NextResponse.json({ error: "Provedor de IA inválido." }, { status: 400 });
-  }
-
-  try {
     await prisma.user.update({
-      where: { id: session.user.id },
-      data: { aiProvider },
+      where: { id: current.id },
+      data: { aiProvider: body.aiProvider },
+      select: { id: true },
     });
-    return NextResponse.json({ ok: true });
-  } catch (err) {
-    console.error("[conta] erro ao trocar provedor de IA:", err);
-    return NextResponse.json(
-      { error: "Não foi possível salvar. Tente novamente." },
-      { status: 500 },
-    );
-  }
+    return okJson({ ok: true });
+  });
 }
 
-// Exclusão de conta (LGPD — direito à eliminação). Ação irreversível:
-// exige a senha atual (re-autenticação) e apaga o User. O onDelete: Cascade
-// remove TUDO junto (Entries, Memories, marcações da Bíblia, uso de IA).
 export async function DELETE(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-  }
+  return secureRoute("account:delete", async () => {
+    const current = await requireCurrentUser(RATE_LIMITS.accountDelete);
+    const body = await parseJsonObject(req, 4 * 1_024);
+    assertOnlyKeys(body, ["senha"]);
+    const senha = parseCurrentPassword(body.senha);
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Corpo inválido." }, { status: 400 });
-  }
-  const { senha } = (body ?? {}) as { senha?: string };
-  if (!senha) {
-    return NextResponse.json(
-      { error: "Confirme sua senha para excluir a conta." },
-      { status: 400 },
-    );
-  }
+    const user = await prisma.user.findUnique({
+      where: { id: current.id },
+      select: { passwordHash: true },
+    });
+    if (!user) {
+      throw new ApiError(401, "UNAUTHENTICATED", "Não autenticado.");
+    }
+    if (!(await bcrypt.compare(senha, user.passwordHash))) {
+      throw new ApiError(403, "INVALID_CURRENT_PASSWORD", "Senha incorreta.");
+    }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { id: true, passwordHash: true },
+    const identifierHash = userRateLimitHash(current.id);
+    await prisma.$transaction(async (tx) => {
+      await tx.rateLimit.deleteMany({ where: { identifierHash } });
+      const deleted = await tx.user.deleteMany({
+        where: {
+          id: current.id,
+          sessionVersion: current.sessionVersion,
+          passwordHash: user.passwordHash,
+        },
+      });
+      if (deleted.count !== 1) {
+        throw new ApiError(
+          409,
+          "ACCOUNT_CHANGED",
+          "A conta mudou durante a operação. Entre novamente.",
+        );
+      }
+    });
+
+    return okJson({ ok: true });
   });
-  if (!user) {
-    return NextResponse.json({ error: "Conta não encontrada." }, { status: 404 });
-  }
-
-  const ok = await bcrypt.compare(senha, user.passwordHash);
-  if (!ok) {
-    return NextResponse.json({ error: "Senha incorreta." }, { status: 403 });
-  }
-
-  // Cascade apaga todos os dados do usuário.
-  await prisma.user.delete({ where: { id: user.id } });
-
-  return NextResponse.json({ ok: true });
 }

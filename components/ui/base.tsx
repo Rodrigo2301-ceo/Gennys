@@ -126,14 +126,26 @@ export function ProgressBar({
   valor,
   cor = ACCENT,
   className = "",
+  rotulo = "Progresso",
+  textoValor,
 }: {
   valor: number; // 0..1
   cor?: string;
   className?: string;
+  rotulo?: string;
+  textoValor?: string;
 }) {
   const pct = Math.max(0, Math.min(1, valor)) * 100;
   return (
-    <div className={`h-2 w-full overflow-hidden rounded-full bg-white/10 ${className}`}>
+    <div
+      className={`h-2 w-full overflow-hidden rounded-full bg-white/10 ${className}`}
+      role="progressbar"
+      aria-label={rotulo}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(pct)}
+      aria-valuetext={textoValor}
+    >
       <div
         className="h-full rounded-full transition-all"
         style={{

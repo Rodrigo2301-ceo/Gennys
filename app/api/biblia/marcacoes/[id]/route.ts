@@ -1,69 +1,86 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ApiError, okJson, secureRoute } from "@/lib/security/errors";
+import { RATE_LIMITS } from "@/lib/security/rateLimit";
+import {
+  assertOnlyKeys,
+  assertTrustedMutation,
+  parseJsonObject,
+} from "@/lib/security/request";
+import { requireCurrentUser } from "@/lib/security/session";
+import {
+  parseHighlightColor,
+  parseId,
+  parseOptionalNullableText,
+} from "@/lib/security/validation";
 
-async function marcacaoDoUsuario(id: string, userId: string) {
-  return prisma.verseMark.findFirst({ where: { id, userId } });
-}
+const MARK_SELECT = {
+  id: true,
+  translationCode: true,
+  bookCode: true,
+  bookName: true,
+  chapter: true,
+  verse: true,
+  texto: true,
+  cor: true,
+  observacao: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 export async function PATCH(
   req: Request,
   { params }: { params: { id: string } },
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-  }
+  return secureRoute("bible:marks:update", async () => {
+    const current = await requireCurrentUser(RATE_LIMITS.bibleWrite);
+    const id = parseId(params.id, "Marcação");
+    const body = await parseJsonObject(req, 8 * 1_024);
+    assertOnlyKeys(body, ["cor", "observacao"]);
 
-  const existente = await marcacaoDoUsuario(params.id, session.user.id);
-  if (!existente) {
-    return NextResponse.json(
-      { error: "Marcação não encontrada." },
-      { status: 404 },
-    );
-  }
+    const data: { cor?: string; observacao?: string | null } = {};
+    if (body.cor !== undefined) data.cor = parseHighlightColor(body.cor);
+    if (body.observacao !== undefined) {
+      data.observacao = parseOptionalNullableText(body.observacao, {
+        label: "Observação",
+        max: 2_000,
+      });
+    }
+    if (Object.keys(data).length === 0) {
+      throw new ApiError(400, "NOTHING_TO_UPDATE", "Nada para atualizar.");
+    }
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Corpo inválido." }, { status: 400 });
-  }
-  const { cor, observacao } = (body ?? {}) as {
-    cor?: string;
-    observacao?: string | null;
-  };
-
-  const marcacao = await prisma.verseMark.update({
-    where: { id: existente.id },
-    data: {
-      cor: cor !== undefined ? cor : undefined,
-      observacao:
-        observacao !== undefined ? observacao?.trim() || null : undefined,
-    },
+    const existente = await prisma.verseMark.findFirst({
+      where: { id, userId: current.id },
+      select: { id: true },
+    });
+    if (!existente) {
+      throw new ApiError(404, "MARK_NOT_FOUND", "Marcação não encontrada.");
+    }
+    const marcacao = await prisma.verseMark.update({
+      where: { id: existente.id },
+      data,
+      select: MARK_SELECT,
+    });
+    return okJson({ marcacao });
   });
-
-  return NextResponse.json({ marcacao });
 }
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: { id: string } },
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-  }
-
-  const existente = await marcacaoDoUsuario(params.id, session.user.id);
-  if (!existente) {
-    return NextResponse.json(
-      { error: "Marcação não encontrada." },
-      { status: 404 },
-    );
-  }
-
-  await prisma.verseMark.delete({ where: { id: existente.id } });
-  return NextResponse.json({ ok: true });
+  return secureRoute("bible:marks:delete", async () => {
+    assertTrustedMutation(req);
+    const current = await requireCurrentUser(RATE_LIMITS.bibleWrite);
+    const id = parseId(params.id, "Marcação");
+    const existente = await prisma.verseMark.findFirst({
+      where: { id, userId: current.id },
+      select: { id: true },
+    });
+    if (!existente) {
+      throw new ApiError(404, "MARK_NOT_FOUND", "Marcação não encontrada.");
+    }
+    await prisma.verseMark.delete({ where: { id: existente.id } });
+    return okJson({ ok: true });
+  });
 }

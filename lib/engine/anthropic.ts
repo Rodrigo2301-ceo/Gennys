@@ -1,20 +1,32 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Categorizacao, ImagemEntrada, TurnoHistorico } from "./types";
 import { extrairJSON, normalizarCategorizacao } from "./parseCategorizacao";
+import { ProvedorIaError } from "./errors";
+import {
+  converterErroProvedor,
+  sinalTimeoutProvedor,
+  validarRespostaTexto,
+} from "./providerRuntime";
 
-// Modelo definido no CLAUDE.md. Key sempre no servidor (ANTHROPIC_API_KEY).
 const MODELO = "claude-sonnet-4-6";
-
 let cliente: Anthropic | null = null;
 
 function getCliente(): Anthropic {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error("ANTHROPIC_API_KEY não configurada no ambiente.");
-  }
-  if (!cliente) {
-    cliente = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  }
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!apiKey) throw new ProvedorIaError("provedor_indisponivel");
+  if (!cliente) cliente = new Anthropic({ apiKey });
   return cliente;
+}
+
+async function criarMensagem(
+  body: Anthropic.MessageCreateParamsNonStreaming,
+): Promise<Anthropic.Message> {
+  const signal = sinalTimeoutProvedor();
+  try {
+    return await getCliente().messages.create(body, { signal });
+  } catch (erro) {
+    throw converterErroProvedor(erro, signal);
+  }
 }
 
 export async function categorizar(params: {
@@ -24,10 +36,9 @@ export async function categorizar(params: {
   imagem?: ImagemEntrada;
 }): Promise<Categorizacao> {
   const { systemPrompt, historico = [], texto, imagem } = params;
-
-  const messages: Anthropic.MessageParam[] = historico.map((t) => ({
-    role: t.autor === "usuario" ? "user" : "assistant",
-    content: t.texto,
+  const messages: Anthropic.MessageParam[] = historico.map((turno) => ({
+    role: turno.autor === "usuario" ? "user" : "assistant",
+    content: turno.texto,
   }));
 
   const conteudoAtual: Anthropic.ContentBlockParam[] = [];
@@ -36,38 +47,24 @@ export async function categorizar(params: {
       type: "image",
       source: {
         type: "base64",
-        media_type: imagem.mediaType as
-          | "image/jpeg"
-          | "image/png"
-          | "image/gif"
-          | "image/webp",
+        media_type: imagem.mediaType,
         data: imagem.base64,
       },
     });
-    conteudoAtual.push({
-      type: "text",
-      text:
-        texto?.trim() ||
-        "Esta é uma foto de uma nota fiscal ou cupom. Extraia os dados financeiros.",
-    });
-  } else {
-    conteudoAtual.push({ type: "text", text: texto?.trim() || "" });
   }
-
+  if (texto) conteudoAtual.push({ type: "text", text: texto });
   messages.push({ role: "user", content: conteudoAtual });
 
-  const resposta = await getCliente().messages.create({
+  const resposta = await criarMensagem({
     model: MODELO,
     max_tokens: 1024,
     system: systemPrompt,
     messages,
   });
-
   const textoResposta = resposta.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
+    .filter((bloco): bloco is Anthropic.TextBlock => bloco.type === "text")
+    .map((bloco) => bloco.text)
     .join("");
-
   return normalizarCategorizacao(extrairJSON(textoResposta));
 }
 
@@ -75,16 +72,16 @@ export async function responderTexto(params: {
   systemPrompt: string;
   pergunta: string;
 }): Promise<string> {
-  const resposta = await getCliente().messages.create({
+  const resposta = await criarMensagem({
     model: MODELO,
     max_tokens: 300,
     system: params.systemPrompt,
     messages: [{ role: "user", content: params.pergunta }],
   });
-
-  return resposta.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("")
-    .trim();
+  return validarRespostaTexto(
+    resposta.content
+      .filter((bloco): bloco is Anthropic.TextBlock => bloco.type === "text")
+      .map((bloco) => bloco.text)
+      .join(""),
+  );
 }

@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Gennys
 
-## Getting Started
+Assistente pessoal em português brasileiro, construído com Next.js App Router,
+React, TypeScript, Prisma e PostgreSQL.
 
-First, run the development server:
+## Requisitos
+
+- Node.js 22 (Prisma 7 requer uma versão recente suportada)
+- PostgreSQL de desenvolvimento isolado
+- variáveis locais baseadas em `.env.example`
+
+Nunca use credenciais ou dados de produção durante desenvolvimento e testes.
+
+## Instalação
 
 ```bash
+npm ci
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+O `postinstall` gera o Prisma Client. A aplicação abre em
+`http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Validação
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run typecheck
+npm run lint
+npm test
+npm run build
+npm audit
+```
 
-## Learn More
+O workflow `.github/workflows/ci.yml` executa essas verificações em pushes e
+pull requests usando apenas configurações sintéticas.
 
-To learn more about Next.js, take a look at the following resources:
+## Banco de dados
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Crie migrations em banco de desenvolvimento. Não execute migration de produção
+como parte de testes ou builds. Para o hardening P0, revise primeiro
+`docs/P0_DEPLOY.md`; a ordem exige backup restaurável, migration aditiva e só
+depois o deploy da aplicação.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Privacidade e IA
 
-## Deploy on Vercel
+- somente provedores configurados no servidor aparecem na interface;
+- conteúdo não é enviado sem consentimento explícito, vigente e versionado;
+- o consentimento pode ser revogado no Perfil;
+- propostas da IA exigem confirmação antes de persistir;
+- prompts, respostas e dados sensíveis não devem ser registrados em logs.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+As regras de produto e design ficam em `CLAUDE.md`; o handoff operacional seguro
+fica em `HANDOFF.md`.

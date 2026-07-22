@@ -2,12 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Cerebro, Chevron, Check } from "@/components/ui/icones";
-import { PROVEDORES_IA, type AiProvider } from "@/lib/ai/providers";
+import type { AiProvider, AiProviderPublico } from "@/lib/ai/providers";
 
 export default function SeletorModelo({
   provedorInicial,
+  provedores,
+  onProvedorAlterado,
 }: {
   provedorInicial: AiProvider;
+  provedores: AiProviderPublico[];
+  onProvedorAlterado: (provider: AiProvider) => void;
 }) {
   const [provedor, setProvedor] = useState<AiProvider>(provedorInicial);
   const [aberto, setAberto] = useState(false);
@@ -38,6 +42,7 @@ export default function SeletorModelo({
         body: JSON.stringify({ aiProvider: novo }),
       });
       if (!res.ok) throw new Error("falhou");
+      onProvedorAlterado(novo);
     } catch {
       setProvedor(anterior); // desfaz em caso de erro
     } finally {
@@ -45,13 +50,13 @@ export default function SeletorModelo({
     }
   }
 
-  const atual = PROVEDORES_IA.find((p) => p.valor === provedor);
+  const atual = provedores.find((p) => p.valor === provedor);
 
   return (
     <div ref={containerRef} className="relative">
       <button
         onClick={() => setAberto((v) => !v)}
-        disabled={salvando}
+        disabled={salvando || provedores.length === 0}
         className="flex items-center gap-1.5 rounded-lg px-2 py-1 font-display text-lg font-bold tracking-tight text-white transition duration-200 hover:bg-white/10 disabled:opacity-60"
         aria-haspopup="listbox"
         aria-expanded={aberto}
@@ -64,7 +69,7 @@ export default function SeletorModelo({
         />
       </button>
 
-      {aberto && (
+      {aberto && provedores.length > 0 && (
         <div
           role="listbox"
           className="absolute left-1/2 top-full z-20 mt-2 w-44 -translate-x-1/2 rounded-xl border border-white/10 bg-royal-800 p-1.5 shadow-glow"
@@ -72,7 +77,7 @@ export default function SeletorModelo({
           <p className="px-2.5 pb-1.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted">
             Cérebro do Gennys
           </p>
-          {PROVEDORES_IA.map((p) => (
+          {provedores.map((p) => (
             <button
               key={p.valor}
               role="option"
@@ -92,7 +97,11 @@ export default function SeletorModelo({
       )}
 
       <span className="sr-only" aria-live="polite">
-        {salvando ? "Salvando escolha de modelo…" : `Modelo atual: ${atual?.label}`}
+        {salvando
+          ? "Salvando escolha de modelo…"
+          : atual
+            ? `Modelo atual: ${atual.label}`
+            : "Nenhum modelo de IA disponível"}
       </span>
     </div>
   );

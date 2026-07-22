@@ -1,5 +1,16 @@
 // Helpers de exibição de Entry no painel. Client-safe (sem imports de servidor).
 
+import {
+  dataFinanceiraEfetiva,
+  formatarDataCivilCurta,
+  mesReferenciaEfetivo,
+} from "@/lib/finance/datas";
+import {
+  deduplicarOcorrencias,
+  movimentoDaEntrada,
+  type MovimentoFinanceiro,
+} from "@/lib/finance/calculos";
+
 export interface EntryLike {
   id: string;
   tipo: string;
@@ -7,6 +18,11 @@ export interface EntryLike {
   valor: string | number | null;
   categoria: string | null;
   locked: boolean;
+  recurring?: boolean;
+  transactionDate?: string | null;
+  referenceMonth?: string | null;
+  recurrenceKey?: string | null;
+  excludeFromTotals?: boolean;
   createdAt: string;
   mesReferencia?: string | null;
   origemRecorrenteId?: string | null;
@@ -23,6 +39,28 @@ export function formatarData(iso: string): string {
     day: "2-digit",
     month: "short",
   });
+}
+
+export function dataFinanceiraEntry(entry: EntryLike): string {
+  return dataFinanceiraEfetiva(entry);
+}
+
+export function mesReferenciaEntry(entry: EntryLike): string {
+  return mesReferenciaEfetivo(entry);
+}
+
+export function formatarDataEntry(entry: EntryLike): string {
+  return entry.tipo === "financa"
+    ? formatarDataCivilCurta(dataFinanceiraEntry(entry))
+    : formatarData(entry.createdAt);
+}
+
+export function movimentoEntry(entry: EntryLike): MovimentoFinanceiro {
+  return movimentoDaEntrada(entry);
+}
+
+export function deduplicarEntriesFinanceiras(entries: EntryLike[]): EntryLike[] {
+  return deduplicarOcorrencias(entries);
 }
 
 export function dadosObj(entry: EntryLike): Record<string, unknown> {

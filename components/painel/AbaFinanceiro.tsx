@@ -23,7 +23,7 @@ export default function AbaFinanceiro({
         titulo="Financeiro"
       />
 
-      {/* Resumo "como estou hoje": patrimônio + fluxo do mês */}
+      {/* Resumo "como estou hoje": saldo acumulado + fluxo do mes financeiro. */}
       <ResumoPatrimonio />
 
       {onRegistrar && (
