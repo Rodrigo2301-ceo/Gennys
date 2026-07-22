@@ -37,6 +37,10 @@ export const cores = {
   // Cores de dado (fluxo de caixa)
   dataIn: "#a5b4fc", // lavanda — "ganhei"
   dataOut: "#fb7185", // coral — "gastei"
+
+  // Semântica financeira: verde=receita, vermelho=despesa
+  income: "#34d399",
+  expense: "#ef4444",
 } as const;
 
 export type CorToken = keyof typeof cores;

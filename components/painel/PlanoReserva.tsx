@@ -9,6 +9,7 @@ import {
   Chip,
   Eyebrow,
   HeroNumero,
+  ProgressBar,
   SecaoTitulo,
 } from "@/components/ui/base";
 import { Alvo } from "@/components/ui/icones";
@@ -28,6 +29,7 @@ interface PlanoDados {
 
 interface DadosReserva {
   media: { receitaMedia: number; despesaMedia: number; mesesConsiderados: number };
+  resumo: { patrimonio: number } | null;
   sugestaoValorMensal: number;
   sugestaoMetaEmergencia: number;
   mesesReservaEmergencia: number;
@@ -186,6 +188,45 @@ export default function PlanoReserva({
               </span>
             </div>
             <p className="mt-1 truncate text-sm text-soft">{plano.objetivo}</p>
+
+            {/* Progresso rumo à meta (usa o patrimônio acumulado) */}
+            {plano.metaValor ? (
+              (() => {
+                const acumulado = Math.max(0, dados.resumo?.patrimonio ?? 0);
+                const progresso = Math.min(1, acumulado / plano.metaValor);
+                const falta = plano.metaValor - acumulado;
+                const projecao =
+                  falta > 0 && plano.valorMensal > 0
+                    ? Math.ceil(falta / plano.valorMensal)
+                    : 0;
+                return (
+                  <div className="mt-3">
+                    <ProgressBar valor={progresso} cor={AMBER} />
+                    <div className="mt-1.5 flex items-center justify-between text-xs">
+                      <span className="font-mono text-soft">
+                        {formatarReais(acumulado)} de{" "}
+                        {formatarReais(plano.metaValor)}
+                      </span>
+                      <span className="font-mono font-medium text-mod-financa">
+                        {Math.round(progresso * 100)}%
+                      </span>
+                    </div>
+                    {projecao > 0 && (
+                      <p className="mt-1.5 text-xs text-muted">
+                        Nesse ritmo ({formatarReais(plano.valorMensal)}/mês), você
+                        chega em ~{projecao} {projecao === 1 ? "mês" : "meses"}.
+                      </p>
+                    )}
+                    {falta <= 0 && (
+                      <p className="mt-1.5 text-xs text-mod-financa">
+                        🎉 Meta alcançada!
+                      </p>
+                    )}
+                  </div>
+                );
+              })()
+            ) : null}
+
             <div className="mt-3 flex flex-wrap gap-2">
               {plano.metaValor ? (
                 <Chip>{formatarReais(plano.valorMensal)}/mês</Chip>

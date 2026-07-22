@@ -26,6 +26,10 @@
   --data-in: #a5b4fc; /* lavanda — "ganhei" */
   --data-out: #fb7185; /* coral — "gastei" */
 
+  /* Semântica financeira: verde=receita/entrada, vermelho=despesa/saída */
+  --income: #34d399;
+  --expense: #ef4444;
+
   --foreground: #e8eefc;
   --soft: #c0c3d4; /* texto de apoio — mais contraste que muted (AA) */
   --muted: #8ea3cc;

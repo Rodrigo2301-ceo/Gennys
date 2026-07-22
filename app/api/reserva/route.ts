@@ -13,6 +13,7 @@ import {
   valorMensalPorPrazo,
   type PlanoReservaDados,
 } from "@/lib/finance/reserva";
+import { calcularResumo } from "@/lib/finance/resumo";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -20,13 +21,15 @@ export async function GET() {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
 
-  const [media, planoAtual] = await Promise.all([
+  const [media, planoAtual, resumo] = await Promise.all([
     calcularMediaFinanceira(session.user.id),
     buscarPlanoAtual(session.user.id),
+    calcularResumo(session.user.id),
   ]);
 
   return NextResponse.json({
     media,
+    resumo,
     sugestaoValorMensal: sugerirValorMensal(media),
     sugestaoMetaEmergencia: sugerirMetaEmergencia(media),
     mesesReservaEmergencia: MESES_RESERVA_EMERGENCIA,

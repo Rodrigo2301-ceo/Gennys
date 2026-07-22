@@ -33,6 +33,8 @@ const config: Config = {
           in: "#a5b4fc", // lavanda — "ganhei"
           out: "#fb7185", // coral — "gastei"
         },
+        income: "var(--income)", // verde — receita
+        expense: "var(--expense)", // vermelho — despesa
       },
       fontFamily: {
         display: ["var(--font-display)", "var(--font-geist-sans)", "sans-serif"],

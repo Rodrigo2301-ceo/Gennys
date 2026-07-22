@@ -3,6 +3,7 @@
 import ListaRegistros from "./ListaRegistros";
 import PlanoReserva from "./PlanoReserva";
 import FluxoCaixa from "./FluxoCaixa";
+import ResumoPatrimonio from "./ResumoPatrimonio";
 import { CORES_MODULO } from "@/lib/modules";
 import type { EntryLike } from "@/lib/entryDisplay";
 import { Botao, CabecalhoTela, SecaoTitulo } from "@/components/ui/base";
@@ -17,29 +18,19 @@ export default function AbaFinanceiro({
   return (
     <div className="flex flex-col gap-4">
       <CabecalhoTela
-        eyebrow="Meu Patrimônio"
+        eyebrow="Central Financeira"
         eyebrowCor={AMBER}
         titulo="Financeiro"
       />
 
-      <div className="flex gap-2">
-        {onRegistrar && (
-          <Botao onClick={onRegistrar} className="flex-1">
-            + Registrar no chat
-          </Botao>
-        )}
-        <Botao
-          variante="ghost"
-          seta
-          onClick={() =>
-            document
-              .getElementById("bloco-plano")
-              ?.scrollIntoView({ behavior: "smooth", block: "start" })
-          }
-        >
-          Ajustar
+      {/* Resumo "como estou hoje": patrimônio + fluxo do mês */}
+      <ResumoPatrimonio />
+
+      {onRegistrar && (
+        <Botao onClick={onRegistrar} className="w-full">
+          + Registrar no chat
         </Botao>
-      </div>
+      )}
 
       <div id="bloco-plano">
         <PlanoReserva onRegistrar={onRegistrar} />
